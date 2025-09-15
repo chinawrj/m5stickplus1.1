@@ -35,3 +35,7 @@ dependencies.lock
 
 # Managed components
 managed_components/
+
+# Cache files
+.cache/
+*.cache
