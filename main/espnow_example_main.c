@@ -30,7 +30,7 @@
 #include "esp_crc.h"
 #include "espnow_example.h"
 #include "axp192.h"
-#include "st7789_driver.h"
+#include "st7789_lcd.h"
 
 #define ESPNOW_MAXDELAY 512
 
@@ -460,52 +460,29 @@ static void axp192_monitor_task(void *pvParameters)
             
             // 4. 关闭所有外设（保留ESP32核心供电）
             // 5. ST7789 TFT显示屏演示
-            ESP_LOGI(TAG, "�️  开始ST7789 TFT显示屏演示");
-            esp_lcd_panel_handle_t panel_handle = NULL;
-            esp_err_t tft_ret = st7789_init(&panel_handle);
+            ESP_LOGI(TAG, "🖥️  开始ST7789 TFT显示屏演示");
+            esp_err_t tft_ret = st7789_lcd_init();
             if (tft_ret == ESP_OK) {
                 ESP_LOGI(TAG, "🖥️  ST7789 TFT显示屏初始化成功");
                 ESP_LOGI(TAG, "🎨 开始显示测试图案...");
                 
                 // 运行测试图案
-                tft_ret = st7789_test_patterns(panel_handle);
+                tft_ret = st7789_lcd_test_patterns();
                 if (tft_ret == ESP_OK) {
                     ESP_LOGI(TAG, "🎨 测试图案显示完成");
                 } else {
                     ESP_LOGE(TAG, "🎨 测试图案显示失败: %s", esp_err_to_name(tft_ret));
                 }
                 
-                // 显示项目信息
-                ESP_LOGI(TAG, "📱 显示项目信息");
-                st7789_fill_screen(panel_handle, ST7789_COLOR_BLACK);
-                vTaskDelay(pdMS_TO_TICKS(500));
-                
-                // 显示简单的状态信息（通过彩色块表示）
-                st7789_draw_rect(panel_handle, 10, 10, 30, 20, ST7789_COLOR_GREEN);  // 电源状态
-                st7789_draw_rect(panel_handle, 50, 10, 30, 20, ST7789_COLOR_BLUE);   // WiFi状态
-                st7789_draw_rect(panel_handle, 90, 10, 30, 20, ST7789_COLOR_YELLOW); // 系统状态
-                
-                // 显示版本信息（通过颜色条）
-                for (int i = 0; i < 10; i++) {
-                    uint16_t color = st7789_rgb888_to_rgb565(i * 25, 255 - i * 25, 128);
-                    st7789_draw_rect(panel_handle, 10 + i * 11, 50, 10, 100, color);
-                }
-                
-                ESP_LOGI(TAG, "📱 项目信息显示完成");
-                vTaskDelay(pdMS_TO_TICKS(3000));
+                // 清理显示屏资源
+                ESP_LOGI(TAG, "🧹 清理ST7789资源");
+                st7789_lcd_deinit();
                 
             } else {
                 ESP_LOGE(TAG, "🖥️  ST7789 TFT显示屏初始化失败: %s", esp_err_to_name(tft_ret));
             }
             
-            ESP_LOGI(TAG, "�💤 关闭所有外设");
-            if (panel_handle != NULL) {
-                // 先显示关闭提示
-                st7789_fill_screen(panel_handle, ST7789_COLOR_RED);
-                vTaskDelay(pdMS_TO_TICKS(500));
-                st7789_fill_screen(panel_handle, ST7789_COLOR_BLACK);
-                vTaskDelay(pdMS_TO_TICKS(500));
-            }
+            ESP_LOGI(TAG, "💤 关闭所有外设");
             
             axp192_power_tft_backlight(false);   // 关闭屏幕背光
             axp192_power_tft_display(false);     // 关闭屏幕显示
@@ -548,8 +525,8 @@ void app_main(void)
     } else {
         ESP_LOGI(TAG, "AXP192 initialized successfully");
         
-        // 创建AXP192监控任务
-        xTaskCreate(axp192_monitor_task, "axp192_monitor", 2048, NULL, 5, NULL);
+        // 创建AXP192监控任务 (增加栈大小以支持LCD操作)
+        xTaskCreate(axp192_monitor_task, "axp192_monitor", 8192, NULL, 5, NULL);
     }
 
     example_wifi_init();
