@@ -380,7 +380,6 @@ static void example_espnow_deinit(example_espnow_send_param_t *send_param)
 
 static void axp192_monitor_task(void *pvParameters)
 {
-    static bool hardware_demo_completed = false;  // 硬件演示完成标记
     float voltage, current, power, charge_current, discharge_current, temp, vbus_voltage, vbus_current;
     uint8_t battery_level;
     
@@ -424,57 +423,50 @@ static void axp192_monitor_task(void *pvParameters)
             ESP_LOGI(TAG, "🔌 USB: %.3fV | %.1fmA", vbus_voltage, vbus_current);
         }
         
-        // === 硬件演示（仅运行一次） ===
-        if (!hardware_demo_completed) {
-            ESP_LOGI(TAG, "=== 🎛️ 硬件外设控制演示（仅运行一次）===");
-                // 1. 屏幕系统演示
-            ESP_LOGI(TAG, "📱 演示: 屏幕系统控制");
-            axp192_power_tft_display(true);      // 屏幕显示 (LDO3=3.0V)
-            axp192_power_tft_backlight(true);    // 屏幕背光 (LDO2=3.3V)
-            ESP_LOGI(TAG, "💡 屏幕系统: 完全开启");
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            
-            // 2. 麦克风系统演示
-            ESP_LOGI(TAG, "🎤 演示: 麦克风系统控制");
-            axp192_power_microphone(true);       // 麦克风 (LDO0=3.3V)
-            ESP_LOGI(TAG, "🎤 麦克风: 开启 (安全固定电压)");
-            
-            // GPIO演示
-            ESP_LOGI(TAG, "📌 GPIO演示: GPIO0-4闪烁");
-            for (int i = 0; i < 5; i++) {
-                axp192_set_gpio0(i % 2);
-                axp192_set_gpio1(i % 2);
-                axp192_set_gpio2(i % 2);
-                axp192_set_gpio3(i % 2);
-                axp192_set_gpio4(i % 2);
-                vTaskDelay(pdMS_TO_TICKS(200));
-            }
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            
-            // 3. 5V GROVE输出演示
-            ESP_LOGI(TAG, "🔌 演示: 5V GROVE输出控制");
-            axp192_power_grove_5v(true);         // 5V输出 (EXTEN)
-            ESP_LOGI(TAG, "🔌 5V GROVE: 开启 (安全控制)");
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            
-            // 4. 关闭所有外设（保留ESP32核心供电）
-            ESP_LOGI(TAG, "💤 关闭所有外设");
-            axp192_power_tft_backlight(false);   // 关闭屏幕背光
-            axp192_power_tft_display(false);     // 关闭屏幕显示
-            axp192_power_microphone(false);      // 关闭麦克风
-            axp192_power_grove_5v(false);        // 关闭5V输出
-            
-            // 关闭所有GPIO
-            axp192_set_gpio0(false);
-            axp192_set_gpio1(false);
-            axp192_set_gpio2(false);
-            axp192_set_gpio3(false);
-            axp192_set_gpio4(false);
-            
-            ESP_LOGI(TAG, "💤 所有外设已关闭，后续可按需调用API开启");
-            ESP_LOGI(TAG, "✅ 硬件演示完成，进入持续监控模式");
-            
-            hardware_demo_completed = true;  // 标记演示已完成
+        // === 🎛️ M5StickC Plus硬件电源管理演示 ===
+        static int demo_cycle = 0;
+        demo_cycle = (demo_cycle + 1) % 4;
+        
+        ESP_LOGI(TAG, "=== 🎛️ 电源管理演示 (周期 %d/4) ===", demo_cycle + 1);
+        
+        switch (demo_cycle) {
+            case 0:
+                ESP_LOGI(TAG, "📱 演示: 屏幕系统控制");
+                axp192_power_tft_display(true);      // 屏幕显示 (LDO3=3.0V)
+                axp192_power_tft_backlight(true);    // 屏幕背光 (LDO2=3.3V)
+                ESP_LOGI(TAG, "💡 屏幕系统: 完全开启");
+                break;
+                
+            case 1:
+                ESP_LOGI(TAG, "🎤 演示: 麦克风系统控制");
+                axp192_power_microphone(true);       // 麦克风 (LDO0=3.3V)
+                ESP_LOGI(TAG, "🎤 麦克风: 开启 (安全固定电压)");
+                
+                // GPIO演示 (仅在麦克风演示时)
+                ESP_LOGI(TAG, "� GPIO演示: GPIO0-4闪烁");
+                for (int i = 0; i < 5; i++) {
+                    axp192_set_gpio0(i % 2);
+                    axp192_set_gpio1(i % 2);
+                    axp192_set_gpio2(i % 2);
+                    axp192_set_gpio3(i % 2);
+                    axp192_set_gpio4(i % 2);
+                    vTaskDelay(pdMS_TO_TICKS(200));
+                }
+                break;
+                
+            case 2:
+                ESP_LOGI(TAG, "� 演示: 5V GROVE输出控制");
+                axp192_power_grove_5v(true);         // 5V输出 (EXTEN)
+                ESP_LOGI(TAG, "� 5V GROVE: 开启 (安全控制)");
+                break;
+                
+            case 3:
+                ESP_LOGI(TAG, "💤 演示: 节能模式");
+                axp192_power_tft_backlight(false);   // 关闭屏幕背光
+                axp192_power_microphone(false);      // 关闭麦克风
+                axp192_power_grove_5v(false);        // 关闭5V输出
+                ESP_LOGI(TAG, "💤 节能模式: 关闭非必要外设 (保留屏幕显示)");
+                break;
         }
         
         ESP_LOGI(TAG, "========================================");
