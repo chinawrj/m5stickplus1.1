@@ -8,7 +8,14 @@
 
 ### 📋 Project Overview
 
-This project is based on ESP-IDF 5.5.1 framework, providing complete hardware driver support for M5StickC Plus 1.1 development board. It focuses on implementing safe and reliable AXP192 power management chip driver to ensure all peripheral devices work properly.
+This project is based on ESP-IDF 5.5.1 framework, providing complete hardware driver support for M5StickC Plus 1.1 development board. It focuses on implementing safe and reliable AXP192 power management chip driver to ensure all peripheral dev├── main/
+│   ├── CMakeLists.txt           # Main program build config | 主程序构建配置
+│   ├── espnow_example_main.c    # Main program and demo code | 主程序和演示代码
+│   ├── espnow_example.h         # Project header file | 项目头文件
+│   ├── axp192.h                 # AXP192 driver header | AXP192驱动头文件
+│   ├── axp192.c                 # AXP192 driver implementation | AXP192驱动实现
+│   ├── st7789_driver.h          # TFT display driver header | TFT显示驱动头文件
+│   └── st7789_driver.c          # TFT display driver implementation | TFT显示驱动实现ork properly.
 
 ### 🎯 Project Goals
 
@@ -147,6 +154,63 @@ void battery_monitor_task(void *param) {
 }
 ```
 
+#### 🖥️ ST7789 TFT Display Control
+
+```c
+#include "st7789_driver.h"
+
+// Initialize TFT display
+esp_lcd_panel_handle_t panel_handle = NULL;
+esp_err_t ret = st7789_init(&panel_handle);
+
+if (ret == ESP_OK) {
+    // Fill screen with solid color
+    st7789_fill_screen(panel_handle, ST7789_COLOR_BLUE);
+    
+    // Draw rectangles
+    st7789_draw_rect(panel_handle, 10, 10, 50, 30, ST7789_COLOR_RED);
+    st7789_draw_rect(panel_handle, 70, 50, 40, 40, ST7789_COLOR_GREEN);
+    
+    // Run comprehensive test patterns
+    st7789_test_patterns(panel_handle);
+    
+    // Convert RGB to display format
+    uint16_t custom_color = st7789_rgb888_to_rgb565(255, 128, 64);
+    st7789_fill_screen(panel_handle, custom_color);
+}
+```
+
+#### 🎨 TFT Display Features
+
+**Display Specifications:**
+- **Resolution**: 135×240 pixels
+- **Color Format**: RGB565 (16-bit)
+- **Panel Offset**: X=52, Y=40 (M5StickC Plus specific)
+- **SPI Interface**: 20MHz pixel clock
+
+**GPIO Configuration:**
+| Pin | Function | GPIO |
+|-----|----------|------|
+| MOSI | SPI Data | GPIO15 |
+| SCLK | SPI Clock | GPIO13 |
+| CS | Chip Select | GPIO5 |
+| DC | Data/Command | GPIO23 |
+| RST | Reset | GPIO18 |
+
+**Available Functions:**
+- `st7789_init()` - Initialize display with ESP-IDF LCD driver
+- `st7789_fill_screen()` - Fill entire screen with color
+- `st7789_draw_rect()` - Draw filled rectangles
+- `st7789_test_patterns()` - Display test patterns (color bars, gradients, shapes)
+- `st7789_rgb888_to_rgb565()` - Color format conversion
+- `st7789_set_brightness()` - Display power control
+
+**Test Patterns Include:**
+1. 🎨 Solid colors (Red, Green, Blue, White)
+2. 📊 Color bars (horizontal stripes)
+3. 🌈 Gradient patterns (grayscale)
+4. 🔲 Geometric shapes (colored rectangles)
+
 ### 🔒 Safety Features
 
 #### Hardware Protection Design
@@ -203,6 +267,41 @@ axp192_power_tft_display(true); // Automatically uses 3.0V
 | LDO0 | 3.3V | 麦克风 |
 | DCDC1 | 3.3V | ESP32主控 |
 | EXTEN | 5.0V | GROVE端口 |
+
+#### TFT显示屏 ST7789v2
+| 规格项 | 参数 |
+|--------|------|
+| 型号 | ST7789v2 |
+| 尺寸 | 1.14英寸 |
+| 分辨率 | 135×240像素 |
+| 颜色 | 16位 RGB565 |
+| 像素时钟 | 20MHz |
+| 通信接口 | SPI |
+
+##### TFT GPIO引脚配置
+| 功能 | GPIO | 说明 |
+|------|------|------|
+| MOSI (数据) | 15 | SPI数据输出 |
+| CLK (时钟) | 13 | SPI时钟 |
+| DC (数据/命令) | 23 | 数据命令选择 |
+| RST (复位) | 18 | 硬件复位 |
+| CS (片选) | 5 | SPI片选 |
+
+##### 可用功能
+- `st7789_init()` - 初始化显示屏
+- `st7789_fill_screen()` - 全屏填充颜色
+- `st7789_fill_rect()` - 绘制填充矩形
+- `st7789_set_rotation()` - 设置屏幕旋转
+- `st7789_test_patterns()` - 显示测试图案
+- `st7789_rgb565()` - RGB颜色转换
+- `st7789_deinit()` - 清理资源
+
+##### 测试图案
+- 纯色填充测试 (红/绿/蓝/白/黑)
+- 垂直条纹图案
+- 水平条纹图案
+- 对角线渐变
+- 彩虹色渐变
 
 ### 🔧 开发环境
 
@@ -330,6 +429,71 @@ axp192_set_ldo3_voltage(5000);  // 可能烧毁屏幕！
 axp192_power_tft_display(true); // 自动使用3.0V
 ```
 
+### 📺 TFT显示屏API
+
+#### 基础使用
+
+```c
+#include "st7789_driver.h"
+
+// 初始化显示屏
+esp_err_t ret = st7789_init();
+if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "TFT初始化失败: %s", esp_err_to_name(ret));
+    return;
+}
+
+// 启用显示屏电源和背光
+axp192_power_tft_display(true);
+axp192_power_tft_backlight(true);
+
+// 全屏填充颜色
+st7789_fill_screen(st7789_rgb565(255, 0, 0));  // 红色
+
+// 绘制矩形
+st7789_fill_rect(10, 10, 50, 30, st7789_rgb565(0, 255, 0));  // 绿色矩形
+
+// 设置屏幕旋转
+st7789_set_rotation(1);  // 横屏模式
+
+// 运行测试图案
+st7789_test_patterns();
+```
+
+#### 颜色定义
+```c
+// 使用RGB565格式
+uint16_t red = st7789_rgb565(255, 0, 0);
+uint16_t green = st7789_rgb565(0, 255, 0);
+uint16_t blue = st7789_rgb565(0, 0, 255);
+uint16_t white = st7789_rgb565(255, 255, 255);
+uint16_t black = st7789_rgb565(0, 0, 0);
+```
+
+#### 完整示例
+```c
+void display_demo(void) {
+    // 初始化显示系统
+    st7789_init();
+    axp192_power_tft_display(true);
+    axp192_power_tft_backlight(true);
+    
+    // 显示彩色条纹
+    for (int y = 0; y < 240; y += 30) {
+        uint16_t color = st7789_rgb565(y, 255 - y, (y * 2) % 255);
+        st7789_fill_rect(0, y, 135, 30, color);
+    }
+    
+    vTaskDelay(pdMS_TO_TICKS(3000));
+    
+    // 运行完整测试序列
+    st7789_test_patterns();
+    
+    // 清理资源
+    st7789_deinit();
+}
+```
+
 ---
 
 ## 📁 Project Structure | 项目结构
@@ -355,6 +519,7 @@ Current example program demonstrates: | 当前示例程序展示：
 - ✅ AXP192 initialization and configuration | AXP192初始化和配置
 - ✅ Safe enablement of all hardware modules | 所有硬件模块安全启用
 - ✅ Complete battery status monitoring | 完整的电池状态监控
+- ✅ TFT display initialization and test patterns | TFT显示屏初始化和测试图案
 - ✅ Temperature monitoring | 温度监测
 - ✅ VBUS status detection | VBUS状态检测
 - ✅ Power saving mode control | 省电模式控制
