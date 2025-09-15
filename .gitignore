@@ -1,6 +1,5 @@
 # ESP-IDF Build files
 build/
-.vscode/
 *.elf
 *.bin
 *.map
@@ -13,7 +12,7 @@ __pycache__/
 *.pyc
 *.pyo
 
-# IDE files
+# IDE files (except VSCode config for project)
 .idea/
 *.swp
 *.swo
@@ -36,6 +35,3 @@ dependencies.lock
 
 # Managed components
 managed_components/
-
-# Test artifacts
-test_build.py
