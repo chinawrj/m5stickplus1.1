@@ -31,6 +31,7 @@
 #include "espnow_example.h"
 #include "axp192.h"
 #include "st7789_lcd.h"
+#include "buzzer.h"
 
 #define ESPNOW_MAXDELAY 512
 
@@ -480,6 +481,38 @@ static void axp192_monitor_task(void *pvParameters)
                 
             } else {
                 ESP_LOGE(TAG, "🖥️  ST7789 TFT显示屏初始化失败: %s", esp_err_to_name(tft_ret));
+            }
+            
+            // 6. 蜂鸣器演示
+            ESP_LOGI(TAG, "🔊 开始无源蜂鸣器演示");
+            esp_err_t buzzer_ret = buzzer_init();
+            if (buzzer_ret == ESP_OK) {
+                ESP_LOGI(TAG, "🔊 蜂鸣器初始化成功");
+                ESP_LOGI(TAG, "🎵 开始蜂鸣器测试...");
+                
+                // 播放启动音效
+                buzzer_play_startup();
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                
+                // 运行完整测试模式
+                buzzer_ret = buzzer_test_patterns();
+                if (buzzer_ret == ESP_OK) {
+                    ESP_LOGI(TAG, "🎵 蜂鸣器测试完成");
+                    // 播放成功音效
+                    buzzer_play_success();
+                } else {
+                    ESP_LOGE(TAG, "🎵 蜂鸣器测试失败: %s", esp_err_to_name(buzzer_ret));
+                    buzzer_play_error();
+                }
+                
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                
+                // 清理蜂鸣器资源
+                ESP_LOGI(TAG, "🧹 清理蜂鸣器资源");
+                buzzer_deinit();
+                
+            } else {
+                ESP_LOGE(TAG, "🔊 蜂鸣器初始化失败: %s", esp_err_to_name(buzzer_ret));
             }
             
             ESP_LOGI(TAG, "💤 关闭所有外设");
