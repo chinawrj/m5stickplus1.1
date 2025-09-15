@@ -32,6 +32,7 @@
 #include "axp192.h"
 #include "st7789_lcd.h"
 #include "buzzer.h"
+#include "red_led.h"
 
 #define ESPNOW_MAXDELAY 512
 
@@ -513,6 +514,38 @@ static void axp192_monitor_task(void *pvParameters)
                 
             } else {
                 ESP_LOGE(TAG, "🔊 蜂鸣器初始化失败: %s", esp_err_to_name(buzzer_ret));
+            }
+            
+            // 7. 红色LED演示
+            ESP_LOGI(TAG, "🔴 开始红色LED演示");
+            esp_err_t led_ret = red_led_init();
+            if (led_ret == ESP_OK) {
+                ESP_LOGI(TAG, "🔴 红色LED初始化成功");
+                ESP_LOGI(TAG, "💡 开始LED测试...");
+                
+                // 播放LED启动指示
+                red_led_indicate_boot();
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                
+                // 运行完整LED测试模式
+                led_ret = red_led_test_patterns();
+                if (led_ret == ESP_OK) {
+                    ESP_LOGI(TAG, "💡 LED测试完成");
+                    // 播放成功指示
+                    red_led_indicate_success();
+                } else {
+                    ESP_LOGE(TAG, "💡 LED测试失败: %s", esp_err_to_name(led_ret));
+                    red_led_indicate_error();
+                }
+                
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                
+                // 清理LED资源
+                ESP_LOGI(TAG, "🧹 清理LED资源");
+                red_led_deinit();
+                
+            } else {
+                ESP_LOGE(TAG, "🔴 红色LED初始化失败: %s", esp_err_to_name(led_ret));
             }
             
             ESP_LOGI(TAG, "💤 关闭所有外设");
