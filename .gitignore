@@ -1,0 +1,41 @@
+# ESP-IDF Build files
+build/
+.vscode/
+*.elf
+*.bin
+*.map
+
+# ESP-IDF SDK config
+sdkconfig.old
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE files
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+
+# Dependencies
+dependencies.lock
+
+# Managed components
+managed_components/
+
+# Test artifacts
+test_build.py
