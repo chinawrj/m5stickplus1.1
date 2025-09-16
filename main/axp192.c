@@ -9,11 +9,11 @@ static i2c_master_bus_handle_t i2c_bus_handle = NULL;
 static i2c_master_dev_handle_t axp192_dev_handle = NULL;
 
 /**
- * @brief I2C主设备初始化
+ * @brief Initialize I2C master device
  */
 static esp_err_t i2c_master_init(void)
 {
-    // 配置I2C总线
+    // Configure I2C bus
     i2c_master_bus_config_t i2c_bus_config = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .i2c_port = I2C_MASTER_NUM,
@@ -29,7 +29,7 @@ static esp_err_t i2c_master_init(void)
         return ret;
     }
 
-    // 配置AXP192设备
+    // Configure AXP192 device
     i2c_device_config_t dev_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = AXP192_I2C_ADDR,
@@ -47,7 +47,7 @@ static esp_err_t i2c_master_init(void)
 }
 
 /**
- * @brief 向AXP192写入一个字节
+ * @brief Write one byte to AXP192
  */
 esp_err_t axp192_write_byte(uint8_t reg_addr, uint8_t data)
 {

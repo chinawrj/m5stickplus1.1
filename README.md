@@ -8,14 +8,7 @@
 
 ### 📋 Project Overview
 
-This project is based on ESP-IDF 5.5.1 framework, providing complete hardware driver support for M5StickC Plus 1.1 development board. It focuses on implementing safe and reliable AXP192 power management chip driver to ensure all peripheral dev├── main/
-│   ├── CMakeLists.txt           # Main program build config | 主程序构建配置
-│   ├── espnow_example_main.c    # Main program and demo code | 主程序和演示代码
-│   ├── espnow_example.h         # Project header file | 项目头文件
-│   ├── axp192.h                 # AXP192 driver header | AXP192驱动头文件
-│   ├── axp192.c                 # AXP192 driver implementation | AXP192驱动实现
-│   ├── st7789_driver.h          # TFT display driver header | TFT显示驱动头文件
-│   └── st7789_driver.c          # TFT display driver implementation | TFT显示驱动实现ork properly.
+This project is based on ESP-IDF 5.5.1 framework, providing complete hardware driver support for M5StickC Plus 1.1 development board. It focuses on implementing safe and reliable AXP192 power management chip driver to ensure all peripheral devices work properly.
 
 ### 🎯 Project Goals
 
@@ -47,7 +40,58 @@ This project is based on ESP-IDF 5.5.1 framework, providing complete hardware dr
 | DCDC1 | 3.3V | ESP32 Main Controller |
 | EXTEN | 5.0V | GROVE Port |
 
-### 🔧 Development Environment
+### � Hardware Connections
+
+#### GPIO Pin Mapping
+| Function | GPIO | Description | Notes |
+|----------|------|-------------|-------|
+| **Buttons** | | | |
+| Button A | GPIO37 | Built-in button A | Pull-up, active low |
+| Button B | GPIO39 | Built-in button B | Pull-up, active low |
+| **LEDs** | | | |
+| Red LED | GPIO10 | Status indicator | Active high |
+| IR LED | GPIO9 | Infrared transmitter | PWM capable |
+| **I2C Bus** | | | |
+| I2C SDA | GPIO21 | I2C data line | AXP192, MPU6886 |
+| I2C SCL | GPIO22 | I2C clock line | 100kHz standard |
+| **TFT Display** | | | |
+| TFT MOSI | GPIO15 | SPI data output | 20MHz SPI |
+| TFT SCLK | GPIO13 | SPI clock | Shared with SD |
+| TFT CS | GPIO5 | Chip select | Active low |
+| TFT DC | GPIO23 | Data/Command | High=data, Low=cmd |
+| TFT RST | GPIO18 | Hardware reset | Active low |
+| **Audio** | | | |
+| MIC CLK | GPIO0 | PDM microphone clock | |
+| MIC DATA | GPIO34 | PDM microphone data | Input only |
+| **GROVE Port** | | | |
+| GROVE SDA | GPIO21 | I2C data (shared) | 3.3V or 5V selectable |
+| GROVE SCL | GPIO22 | I2C clock (shared) | External pull-up required |
+
+#### I2C Device Addresses
+| Device | Address | Function |
+|--------|---------|----------|
+| AXP192 | 0x34 | Power management |
+| MPU6886 | 0x68 | 6-axis IMU sensor |
+
+#### Hardware Connection Diagram
+```
+M5StickC Plus 1.1 Block Diagram:
+
+   ESP32-PICO-D4
+        │
+        ├─── I2C Bus (GPIO21/22) ──┬─── AXP192 (Power Management)
+        │                          └─── MPU6886 (IMU Sensor)
+        │
+        ├─── SPI Bus (GPIO13/15) ───┬─── ST7789 TFT Display
+        │                          └─── (Future: SD Card)
+        │
+        ├─── GPIO37/39 ────────────── Buttons A/B
+        ├─── GPIO9/10 ─────────────── IR LED / Red LED
+        ├─── GPIO0/34 ─────────────── PDM Microphone
+        └─── USB-C ───────────────── Programming/Power
+```
+
+### �🔧 Development Environment
 
 #### Required Software
 - **ESP-IDF**: v5.5.1+
@@ -229,6 +273,288 @@ axp192_set_ldo3_voltage(5000);  // May burn the screen!
 ```c
 axp192_power_tft_display(true); // Automatically uses 3.0V
 ```
+
+### 🔍 Debug and Testing
+
+#### Hardware Testing Checklist
+```c
+// Basic hardware verification
+void hardware_self_test(void) {
+    ESP_LOGI(TAG, "🔧 Starting hardware self-test...");
+    
+    // 1. AXP192 Communication Test
+    if (axp192_init() == ESP_OK) {
+        ESP_LOGI(TAG, "✅ AXP192 communication OK");
+    } else {
+        ESP_LOGE(TAG, "❌ AXP192 communication failed");
+    }
+    
+    // 2. Battery Status Test
+    float voltage;
+    if (axp192_get_battery_voltage(&voltage) == ESP_OK) {
+        ESP_LOGI(TAG, "✅ Battery voltage: %.2fV", voltage);
+    }
+    
+    // 3. I2C Device Scan
+    ESP_LOGI(TAG, "🔍 Scanning I2C devices...");
+    for (uint8_t addr = 0x08; addr < 0x78; addr++) {
+        if (i2c_device_exists(addr)) {
+            ESP_LOGI(TAG, "📍 Found device at 0x%02X", addr);
+        }
+    }
+    
+    // 4. TFT Display Test
+    if (st7789_init() == ESP_OK) {
+        ESP_LOGI(TAG, "✅ TFT display initialized");
+        st7789_test_patterns(); // Run display tests
+    }
+}
+```
+
+#### Software Debugging
+```bash
+# Enable detailed debug output
+idf.py menuconfig
+# Navigate to: Component config → Log output → Default log verbosity → Debug
+
+# Build with debug symbols
+idf.py build
+
+# Monitor with detailed logs
+idf.py monitor --print-filter="*:D"
+
+# GDB debugging session
+idf.py gdb
+(gdb) break app_main
+(gdb) continue
+(gdb) info registers
+```
+
+#### Component Testing
+```c
+// Power management unit test
+void test_power_management(void) {
+    // Test all power channels
+    assert(axp192_power_tft_display(true) == ESP_OK);
+    assert(axp192_power_tft_backlight(true) == ESP_OK);
+    assert(axp192_power_microphone(true) == ESP_OK);
+    assert(axp192_power_grove_5v(true) == ESP_OK);
+    
+    // Verify power states
+    ESP_LOGI(TAG, "🔋 All power channels enabled successfully");
+}
+
+// Display driver test
+void test_display_driver(void) {
+    // Color fill tests
+    uint16_t colors[] = {
+        ST7789_COLOR_RED, ST7789_COLOR_GREEN, 
+        ST7789_COLOR_BLUE, ST7789_COLOR_WHITE
+    };
+    
+    for (int i = 0; i < 4; i++) {
+        st7789_fill_screen(panel_handle, colors[i]);
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+    
+    ESP_LOGI(TAG, "🎨 Display test completed");
+}
+```
+
+### 🔒 Security and Best Practices
+
+#### Error Handling Patterns
+```c
+// Example: Robust power management with error handling
+esp_err_t safe_hardware_init(void) {
+    esp_err_t ret;
+    
+    // Initialize AXP192 with timeout
+    ret = axp192_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "AXP192 init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // Enable display with verification
+    ret = axp192_power_tft_display(true);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Display power failed: %s", esp_err_to_name(ret));
+        axp192_deinit(); // Cleanup on failure
+        return ret;
+    }
+    
+    // Verify power state
+    vTaskDelay(pdMS_TO_TICKS(100)); // Wait for stabilization
+    if (!axp192_is_display_powered()) {
+        ESP_LOGE(TAG, "Display power verification failed");
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "✅ Hardware initialized safely");
+    return ESP_OK;
+}
+```
+
+#### Code Quality Guidelines
+1. **Always check return values** from hardware functions
+2. **Use watchdog timer** for critical operations
+3. **Implement graceful shutdown** on low battery
+4. **Add timeout protection** for I2C operations
+5. **Use appropriate log levels** (DEBUG, INFO, WARN, ERROR)
+
+#### Battery Safety
+```c
+// Low battery protection
+void battery_safety_monitor(void *param) {
+    while (1) {
+        float voltage;
+        if (axp192_get_battery_voltage(&voltage) == ESP_OK) {
+            if (voltage < 3.0f) {
+                ESP_LOGW(TAG, "⚠️ Low battery: %.2fV", voltage);
+                // Enter power saving mode
+                esp_deep_sleep_start();
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(10000)); // Check every 10s
+    }
+}
+```
+
+### 📚 Examples and Tutorials
+
+#### Basic Examples
+```
+examples/
+├── 01_power_management/     # AXP192 basic usage and safety
+├── 02_display_hello/        # Simple "Hello World" on TFT
+├── 03_battery_monitor/      # Real-time battery status display
+├── 04_button_input/         # Button interrupt handling
+├── 05_sensor_reading/       # MPU6886 accelerometer/gyroscope
+└── 06_grove_expansion/      # Using GROVE port for sensors
+```
+
+#### Example 1: Simple Battery Monitor
+```c
+#include "axp192.h"
+#include "st7789_driver.h"
+
+void app_main(void) {
+    // Initialize hardware
+    axp192_init();
+    axp192_power_tft_display(true);
+    axp192_power_tft_backlight(true);
+    
+    st7789_init();
+    
+    while (1) {
+        float voltage, current;
+        uint8_t level;
+        
+        // Get battery info
+        axp192_get_battery_voltage(&voltage);
+        axp192_get_battery_current(&current);
+        axp192_get_battery_level(&level);
+        
+        // Display on screen
+        st7789_fill_screen(ST7789_COLOR_BLACK);
+        char text[64];
+        snprintf(text, sizeof(text), "Battery: %.2fV\nLevel: %d%%", voltage, level);
+        // st7789_draw_text(10, 50, text, ST7789_COLOR_WHITE);
+        
+        ESP_LOGI(TAG, "🔋 %s", text);
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+}
+```
+
+#### Example 2: Button Input Handler
+```c
+#include "driver/gpio.h"
+
+#define BUTTON_A_GPIO  37
+#define BUTTON_B_GPIO  39
+
+static void IRAM_ATTR button_isr_handler(void* arg) {
+    uint32_t gpio_num = (uint32_t) arg;
+    // Send event to task queue for processing
+    // Don't do heavy work in ISR
+}
+
+void setup_buttons(void) {
+    gpio_config_t io_conf = {
+        .intr_type = GPIO_INTR_NEGEDGE,
+        .mode = GPIO_MODE_INPUT,
+        .pin_bit_mask = (1ULL << BUTTON_A_GPIO) | (1ULL << BUTTON_B_GPIO),
+        .pull_down_en = 0,
+        .pull_up_en = 1,
+    };
+    gpio_config(&io_conf);
+    
+    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
+    gpio_isr_handler_add(BUTTON_A_GPIO, button_isr_handler, (void*) BUTTON_A_GPIO);
+    gpio_isr_handler_add(BUTTON_B_GPIO, button_isr_handler, (void*) BUTTON_B_GPIO);
+}
+```
+
+### 📖 Complete API Reference
+
+#### AXP192 Power Management Functions
+```c
+// Initialization
+esp_err_t axp192_init(void);                    // Initialize AXP192 chip
+esp_err_t axp192_deinit(void);                  // Cleanup resources
+
+// Safe Power Control (Recommended)
+esp_err_t axp192_power_tft_display(bool enable);    // 3.0V for display IC
+esp_err_t axp192_power_tft_backlight(bool enable);  // 3.3V for backlight
+esp_err_t axp192_power_microphone(bool enable);     // 3.3V for microphone
+esp_err_t axp192_power_grove_5v(bool enable);       // 5.0V for GROVE port
+
+// Battery Monitoring
+esp_err_t axp192_get_battery_voltage(float *voltage);    // Battery voltage (V)
+esp_err_t axp192_get_battery_current(float *current);    // Battery current (mA)
+esp_err_t axp192_get_battery_power(float *power);        // Battery power (mW)
+esp_err_t axp192_get_battery_level(uint8_t *level);      // Battery level (0-100%)
+
+// Status Check
+bool axp192_is_charging(void);              // Is battery charging?
+bool axp192_is_battery_present(void);       // Is battery connected?
+bool axp192_is_vbus_present(void);          // Is USB power connected?
+```
+
+#### ST7789 Display Functions
+```c
+// Display Control
+esp_err_t st7789_init(esp_lcd_panel_handle_t *panel_handle);
+esp_err_t st7789_deinit(esp_lcd_panel_handle_t panel_handle);
+
+// Drawing Functions
+esp_err_t st7789_fill_screen(esp_lcd_panel_handle_t panel, uint16_t color);
+esp_err_t st7789_draw_rect(esp_lcd_panel_handle_t panel, 
+                          int x, int y, int width, int height, uint16_t color);
+
+// Utility Functions
+uint16_t st7789_rgb888_to_rgb565(uint8_t r, uint8_t g, uint8_t b);
+esp_err_t st7789_test_patterns(esp_lcd_panel_handle_t panel);
+
+// Color Constants
+#define ST7789_COLOR_BLACK   0x0000
+#define ST7789_COLOR_WHITE   0xFFFF
+#define ST7789_COLOR_RED     0xF800
+#define ST7789_COLOR_GREEN   0x07E0
+#define ST7789_COLOR_BLUE    0x001F
+```
+
+#### Error Codes Reference
+| Error Code | Description | Common Solutions |
+|------------|-------------|------------------|
+| `ESP_OK` | Success | No action needed |
+| `ESP_ERR_INVALID_ARG` | Invalid parameter | Check function arguments |
+| `ESP_ERR_NOT_FOUND` | Device not found | Check I2C connections and addresses |
+| `ESP_ERR_TIMEOUT` | Operation timeout | Check I2C speed, add delays |
+| `ESP_ERR_INVALID_STATE` | Invalid state | Initialize device before use |
+| `ESP_ERR_NO_MEM` | Out of memory | Reduce heap usage, check for leaks |
 
 ---
 
@@ -429,7 +755,289 @@ axp192_set_ldo3_voltage(5000);  // 可能烧毁屏幕！
 axp192_power_tft_display(true); // 自动使用3.0V
 ```
 
-### 📺 TFT显示屏API
+### � 调试和测试
+
+#### 硬件测试清单
+```c
+// 基础硬件验证
+void hardware_self_test(void) {
+    ESP_LOGI(TAG, "🔧 开始硬件自检...");
+    
+    // 1. AXP192通信测试
+    if (axp192_init() == ESP_OK) {
+        ESP_LOGI(TAG, "✅ AXP192通信正常");
+    } else {
+        ESP_LOGE(TAG, "❌ AXP192通信失败");
+    }
+    
+    // 2. 电池状态测试
+    float voltage;
+    if (axp192_get_battery_voltage(&voltage) == ESP_OK) {
+        ESP_LOGI(TAG, "✅ 电池电压: %.2fV", voltage);
+    }
+    
+    // 3. I2C设备扫描
+    ESP_LOGI(TAG, "🔍 扫描I2C设备...");
+    for (uint8_t addr = 0x08; addr < 0x78; addr++) {
+        if (i2c_device_exists(addr)) {
+            ESP_LOGI(TAG, "📍 发现设备: 0x%02X", addr);
+        }
+    }
+    
+    // 4. TFT显示测试
+    if (st7789_init() == ESP_OK) {
+        ESP_LOGI(TAG, "✅ TFT显示屏初始化成功");
+        st7789_test_patterns(); // 运行显示测试
+    }
+}
+```
+
+#### 软件调试
+```bash
+# 启用详细调试输出
+idf.py menuconfig
+# 导航到: Component config → Log output → Default log verbosity → Debug
+
+# 带调试符号编译
+idf.py build
+
+# 监控详细日志
+idf.py monitor --print-filter="*:D"
+
+# GDB调试会话
+idf.py gdb
+(gdb) break app_main
+(gdb) continue
+(gdb) info registers
+```
+
+#### 组件测试
+```c
+// 电源管理单元测试
+void test_power_management(void) {
+    // 测试所有电源通道
+    assert(axp192_power_tft_display(true) == ESP_OK);
+    assert(axp192_power_tft_backlight(true) == ESP_OK);
+    assert(axp192_power_microphone(true) == ESP_OK);
+    assert(axp192_power_grove_5v(true) == ESP_OK);
+    
+    // 验证电源状态
+    ESP_LOGI(TAG, "🔋 所有电源通道启用成功");
+}
+
+// 显示驱动测试
+void test_display_driver(void) {
+    // 颜色填充测试
+    uint16_t colors[] = {
+        ST7789_COLOR_RED, ST7789_COLOR_GREEN, 
+        ST7789_COLOR_BLUE, ST7789_COLOR_WHITE
+    };
+    
+    for (int i = 0; i < 4; i++) {
+        st7789_fill_screen(panel_handle, colors[i]);
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+    
+    ESP_LOGI(TAG, "🎨 显示测试完成");
+}
+```
+
+### 🔒 安全性和最佳实践
+
+#### 错误处理模式
+```c
+// 示例: 带错误处理的稳健电源管理
+esp_err_t safe_hardware_init(void) {
+    esp_err_t ret;
+    
+    // 带超时的AXP192初始化
+    ret = axp192_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "AXP192初始化失败: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // 带验证的显示器启用
+    ret = axp192_power_tft_display(true);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "显示器电源失败: %s", esp_err_to_name(ret));
+        axp192_deinit(); // 失败时清理
+        return ret;
+    }
+    
+    // 验证电源状态
+    vTaskDelay(pdMS_TO_TICKS(100)); // 等待稳定
+    if (!axp192_is_display_powered()) {
+        ESP_LOGE(TAG, "显示器电源验证失败");
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "✅ 硬件安全初始化完成");
+    return ESP_OK;
+}
+```
+
+#### 代码质量指南
+1. **始终检查返回值** - 所有硬件函数的返回值
+2. **使用看门狗定时器** - 关键操作的保护
+3. **实现优雅关机** - 低电量时的处理
+4. **添加超时保护** - I2C操作的超时
+5. **使用合适的日志级别** - DEBUG, INFO, WARN, ERROR
+
+#### 电池安全
+```c
+// 低电量保护
+void battery_safety_monitor(void *param) {
+    while (1) {
+        float voltage;
+        if (axp192_get_battery_voltage(&voltage) == ESP_OK) {
+            if (voltage < 3.0f) {
+                ESP_LOGW(TAG, "⚠️ 电池电量低: %.2fV", voltage);
+                // 进入省电模式
+                esp_deep_sleep_start();
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(10000)); // 每10秒检查一次
+    }
+}
+```
+
+### 📚 示例和教程
+
+#### 基础示例
+```
+examples/
+├── 01_power_management/     # AXP192基础使用和安全性
+├── 02_display_hello/        # TFT上的简单"Hello World"
+├── 03_battery_monitor/      # 实时电池状态显示
+├── 04_button_input/         # 按键中断处理
+├── 05_sensor_reading/       # MPU6886加速度计/陀螺仪
+└── 06_grove_expansion/      # 使用GROVE端口连接传感器
+```
+
+#### 示例1: 简单电池监视器
+```c
+#include "axp192.h"
+#include "st7789_driver.h"
+
+void app_main(void) {
+    // 初始化硬件
+    axp192_init();
+    axp192_power_tft_display(true);
+    axp192_power_tft_backlight(true);
+    
+    st7789_init();
+    
+    while (1) {
+        float voltage, current;
+        uint8_t level;
+        
+        // 获取电池信息
+        axp192_get_battery_voltage(&voltage);
+        axp192_get_battery_current(&current);
+        axp192_get_battery_level(&level);
+        
+        // 在屏幕上显示
+        st7789_fill_screen(ST7789_COLOR_BLACK);
+        char text[64];
+        snprintf(text, sizeof(text), "电池: %.2fV\n电量: %d%%", voltage, level);
+        // st7789_draw_text(10, 50, text, ST7789_COLOR_WHITE);
+        
+        ESP_LOGI(TAG, "🔋 %s", text);
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+}
+```
+
+#### 示例2: 按键输入处理
+```c
+#include "driver/gpio.h"
+
+#define BUTTON_A_GPIO  37
+#define BUTTON_B_GPIO  39
+
+static void IRAM_ATTR button_isr_handler(void* arg) {
+    uint32_t gpio_num = (uint32_t) arg;
+    // 发送事件到任务队列处理
+    // 不要在ISR中做繁重工作
+}
+
+void setup_buttons(void) {
+    gpio_config_t io_conf = {
+        .intr_type = GPIO_INTR_NEGEDGE,
+        .mode = GPIO_MODE_INPUT,
+        .pin_bit_mask = (1ULL << BUTTON_A_GPIO) | (1ULL << BUTTON_B_GPIO),
+        .pull_down_en = 0,
+        .pull_up_en = 1,
+    };
+    gpio_config(&io_conf);
+    
+    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
+    gpio_isr_handler_add(BUTTON_A_GPIO, button_isr_handler, (void*) BUTTON_A_GPIO);
+    gpio_isr_handler_add(BUTTON_B_GPIO, button_isr_handler, (void*) BUTTON_B_GPIO);
+}
+```
+
+### 📖 完整API参考
+
+#### AXP192电源管理函数
+```c
+// 初始化
+esp_err_t axp192_init(void);                    // 初始化AXP192芯片
+esp_err_t axp192_deinit(void);                  // 清理资源
+
+// 安全电源控制（推荐）
+esp_err_t axp192_power_tft_display(bool enable);    // 3.0V供电显示IC
+esp_err_t axp192_power_tft_backlight(bool enable);  // 3.3V供电背光
+esp_err_t axp192_power_microphone(bool enable);     // 3.3V供电麦克风
+esp_err_t axp192_power_grove_5v(bool enable);       // 5.0V供电GROVE端口
+
+// 电池监控
+esp_err_t axp192_get_battery_voltage(float *voltage);    // 电池电压 (V)
+esp_err_t axp192_get_battery_current(float *current);    // 电池电流 (mA)
+esp_err_t axp192_get_battery_power(float *power);        // 电池功率 (mW)
+esp_err_t axp192_get_battery_level(uint8_t *level);      // 电池电量 (0-100%)
+
+// 状态检查
+bool axp192_is_charging(void);              // 是否正在充电？
+bool axp192_is_battery_present(void);       // 是否连接电池？
+bool axp192_is_vbus_present(void);          // 是否连接USB电源？
+```
+
+#### ST7789显示功能
+```c
+// 显示控制
+esp_err_t st7789_init(esp_lcd_panel_handle_t *panel_handle);
+esp_err_t st7789_deinit(esp_lcd_panel_handle_t panel_handle);
+
+// 绘图功能
+esp_err_t st7789_fill_screen(esp_lcd_panel_handle_t panel, uint16_t color);
+esp_err_t st7789_draw_rect(esp_lcd_panel_handle_t panel, 
+                          int x, int y, int width, int height, uint16_t color);
+
+// 实用功能
+uint16_t st7789_rgb888_to_rgb565(uint8_t r, uint8_t g, uint8_t b);
+esp_err_t st7789_test_patterns(esp_lcd_panel_handle_t panel);
+
+// 颜色常量
+#define ST7789_COLOR_BLACK   0x0000
+#define ST7789_COLOR_WHITE   0xFFFF
+#define ST7789_COLOR_RED     0xF800
+#define ST7789_COLOR_GREEN   0x07E0
+#define ST7789_COLOR_BLUE    0x001F
+```
+
+#### 错误代码参考
+| 错误代码 | 描述 | 常见解决方案 |
+|----------|------|-------------|
+| `ESP_OK` | 成功 | 无需操作 |
+| `ESP_ERR_INVALID_ARG` | 无效参数 | 检查函数参数 |
+| `ESP_ERR_NOT_FOUND` | 设备未找到 | 检查I2C连接和地址 |
+| `ESP_ERR_TIMEOUT` | 操作超时 | 检查I2C速度，添加延时 |
+| `ESP_ERR_INVALID_STATE` | 无效状态 | 使用前先初始化设备 |
+| `ESP_ERR_NO_MEM` | 内存不足 | 减少堆使用，检查内存泄漏 |
+
+### �📺 TFT显示屏API
 
 #### 基础使用
 
@@ -611,121 +1219,3 @@ This project is open source under [MIT License](LICENSE). | 本项目基于 [MIT
 ---
 
 **⚡ Unleash the full potential of your M5StickC Plus! | 让您的M5StickC Plus发挥最大潜能！**
-
-# ESPNOW Example
-
-(See the README.md file in the upper level 'examples' directory for more information about examples.)
-
-This example shows how to use ESPNOW of wifi. Example does the following steps:
-
-* Start WiFi.
-* Initialize ESPNOW.
-* Register ESPNOW sending or receiving callback function.
-* Add ESPNOW peer information.
-* Send and receive ESPNOW data.
-
-This example need at least two ESP devices:
-
-* In order to get the MAC address of the other device, Device1 firstly send broadcast ESPNOW data with 'state' set as 0.
-* When Device2 receiving broadcast ESPNOW data from Device1 with 'state' as 0, adds Device1 into the peer list.
-  Then start sending broadcast ESPNOW data with 'state' set as 1.
-* When Device1 receiving broadcast ESPNOW data with 'state' as 1, compares the local magic number with that in the data.
-  If the local one is bigger than that one, stop sending broadcast ESPNOW data and starts sending unicast ESPNOW data to Device2.
-* If Device2 receives unicast ESPNOW data, also stop sending broadcast ESPNOW data.
-
-In practice, if the MAC address of the other device is known, it's not required to send/receive broadcast ESPNOW data first,
-just add the device into the peer list and send/receive unicast ESPNOW data.
-
-There are a lot of "extras" on top of ESPNOW data, such as type, state, sequence number, CRC and magic in this example. These "extras" are
-not required to use ESPNOW. They are only used to make this example to run correctly. However, it is recommended that users add some "extras"
-to make ESPNOW data more safe and more reliable.
-
-## How to use example
-
-### Configure the project
-
-```
-idf.py menuconfig
-```
-
-* Set WiFi mode (station or SoftAP) under Example Configuration Options.
-* Set ESPNOW primary master key under Example Configuration Options.
-  This parameter must be set to the same value for sending and recving devices.
-* Set ESPNOW local master key under Example Configuration Options.
-  This parameter must be set to the same value for sending and recving devices.
-* Set Channel under Example Configuration Options.
-  The sending device and the recving device must be on the same channel.
-* Set Send count and Send delay under Example Configuration Options.
-* Set Send len under Example Configuration Options.
-* Set Enable Long Range Options.
-  When this parameter is enabled, the ESP32 device will send data at the PHY rate of 512Kbps or 256Kbps
-  then the data can be transmitted over long range between two ESP32 devices.
-
-### Build and Flash
-
-Build the project and flash it to the board, then run monitor tool to view serial output:
-
-```
-idf.py -p PORT flash monitor
-```
-
-(To exit the serial monitor, type ``Ctrl-]``.)
-
-See the Getting Started Guide for full steps to configure and use ESP-IDF to build projects.
-
-## Example Output
-
-Here is the example of ESPNOW receiving device console output.
-
-```
-I (898) phy: phy_version: 3960, 5211945, Jul 18 2018, 10:40:07, 0, 0
-I (898) wifi: mode : sta (30:ae:a4:80:45:68)
-I (898) espnow_example: WiFi started
-I (898) ESPNOW: espnow [version: 1.0] init
-I (5908) espnow_example: Start sending broadcast data
-I (6908) espnow_example: send data to ff:ff:ff:ff:ff:ff
-I (7908) espnow_example: send data to ff:ff:ff:ff:ff:ff
-I (52138) espnow_example: send data to ff:ff:ff:ff:ff:ff
-I (52138) espnow_example: Receive 0th broadcast data from: 30:ae:a4:0c:34:ec, len: 200
-I (53158) espnow_example: send data to ff:ff:ff:ff:ff:ff
-I (53158) espnow_example: Receive 1th broadcast data from: 30:ae:a4:0c:34:ec, len: 200
-I (54168) espnow_example: send data to ff:ff:ff:ff:ff:ff
-I (54168) espnow_example: Receive 2th broadcast data from: 30:ae:a4:0c:34:ec, len: 200
-I (54168) espnow_example: Receive 0th unicast data from: 30:ae:a4:0c:34:ec, len: 200
-I (54678) espnow_example: Receive 1th unicast data from: 30:ae:a4:0c:34:ec, len: 200
-I (55668) espnow_example: Receive 2th unicast data from: 30:ae:a4:0c:34:ec, len: 200
-```
-
-Here is the example of ESPNOW sending device console output.
-
-```
-I (915) phy: phy_version: 3960, 5211945, Jul 18 2018, 10:40:07, 0, 0
-I (915) wifi: mode : sta (30:ae:a4:0c:34:ec)
-I (915) espnow_example: WiFi started
-I (915) ESPNOW: espnow [version: 1.0] init
-I (5915) espnow_example: Start sending broadcast data
-I (5915) espnow_example: Receive 41th broadcast data from: 30:ae:a4:80:45:68, len: 200
-I (5915) espnow_example: Receive 42th broadcast data from: 30:ae:a4:80:45:68, len: 200
-I (5925) espnow_example: Receive 44th broadcast data from: 30:ae:a4:80:45:68, len: 200
-I (5935) espnow_example: Receive 45th broadcast data from: 30:ae:a4:80:45:68, len: 200
-I (6965) espnow_example: send data to ff:ff:ff:ff:ff:ff
-I (6965) espnow_example: Receive 46th broadcast data from: 30:ae:a4:80:45:68, len: 200
-I (7975) espnow_example: send data to ff:ff:ff:ff:ff:ff
-I (7975) espnow_example: Receive 47th broadcast data from: 30:ae:a4:80:45:68, len: 200
-I (7975) espnow_example: Start sending unicast data
-I (7975) espnow_example: send data to 30:ae:a4:80:45:68
-I (9015) espnow_example: send data to 30:ae:a4:80:45:68
-I (9015) espnow_example: Receive 48th broadcast data from: 30:ae:a4:80:45:68, len: 200
-I (10015) espnow_example: send data to 30:ae:a4:80:45:68
-I (16075) espnow_example: send data to 30:ae:a4:80:45:68
-I (17075) espnow_example: send data to 30:ae:a4:80:45:68
-I (24125) espnow_example: send data to 30:ae:a4:80:45:68
-```
-
-## Troubleshooting
-
-If ESPNOW data can not be received from another device, maybe the two devices are not
-on the same channel or the primary key and local key are different.
-
-In real application, if the receiving device is in station mode only and it connects to an AP,
-modem sleep should be disabled. Otherwise, it may fail to revceive ESPNOW data from other devices.

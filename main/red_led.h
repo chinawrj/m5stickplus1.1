@@ -18,24 +18,24 @@
 #define BLINK_VERY_SLOW_MS      1000  // Very slow blink interval
 
 /**
- * @brief LED状态枚举
+ * @brief LED state enumeration
  */
 typedef enum {
-    LED_STATE_OFF = 0,        // LED关闭
-    LED_STATE_ON,             // LED常亮
-    LED_STATE_BLINK_FAST,     // 快速闪烁
-    LED_STATE_BLINK_NORMAL,   // 正常闪烁
-    LED_STATE_BLINK_SLOW,     // 慢速闪烁
-    LED_STATE_BLINK_VERY_SLOW // 超慢闪烁
+    LED_STATE_OFF = 0,        // LED off
+    LED_STATE_ON,             // LED on
+    LED_STATE_BLINK_FAST,     // Fast blink
+    LED_STATE_BLINK_NORMAL,   // Normal blink
+    LED_STATE_BLINK_SLOW,     // Slow blink
+    LED_STATE_BLINK_VERY_SLOW // Very slow blink
 } led_state_t;
 
 /**
- * @brief LED闪烁模式结构体
+ * @brief LED blink pattern structure
  */
 typedef struct {
-    uint32_t on_time_ms;      // 亮起时间 (毫秒)
-    uint32_t off_time_ms;     // 熄灭时间 (毫秒)
-    uint32_t repeat_count;    // 重复次数 (0 = 无限循环)
+    uint32_t on_time_ms;      // On time (milliseconds)
+    uint32_t off_time_ms;     // Off time (milliseconds)
+    uint32_t repeat_count;    // Repeat count (0 = infinite loop)
 } led_blink_pattern_t;
 
 /**

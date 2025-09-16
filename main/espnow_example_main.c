@@ -382,7 +382,7 @@ static void example_espnow_deinit(example_espnow_send_param_t *send_param)
     esp_now_deinit();
 }
 
-// 按键中断回调函数
+// Button interrupt callback function
 static void button_interrupt_callback(button_id_t button_id, button_event_t event, uint32_t press_duration)
 {
     const char* event_names[] = {
@@ -394,21 +394,21 @@ static void button_interrupt_callback(button_id_t button_id, button_event_t even
              event_names[event], 
              press_duration);
              
-    // 可以在这里添加具体的按键响应逻辑
+    // Add specific button response logic here
     switch (button_id) {
         case BUTTON_A:
             if (event == BUTTON_EVENT_SHORT_PRESS) {
-                ESP_LOGI(TAG, "🔘 Button A短按 - 可以实现功能切换");
+                ESP_LOGI(TAG, "🔘 Button A short press - Function switch");
             } else if (event == BUTTON_EVENT_LONG_PRESS) {
-                ESP_LOGI(TAG, "🔘 Button A长按 - 可以实现设置模式");
+                ESP_LOGI(TAG, "🔘 Button A long press - Settings mode");
             }
             break;
             
         case BUTTON_B:
             if (event == BUTTON_EVENT_SHORT_PRESS) {
-                ESP_LOGI(TAG, "🔘 Button B短按 - 可以实现确认操作");
+                ESP_LOGI(TAG, "🔘 Button B short press - Confirm action");
             } else if (event == BUTTON_EVENT_LONG_PRESS) {
-                ESP_LOGI(TAG, "🔘 Button B长按 - 可以实现重启功能");
+                ESP_LOGI(TAG, "🔘 Button B long press - Restart function");
             }
             break;
             
@@ -419,44 +419,44 @@ static void button_interrupt_callback(button_id_t button_id, button_event_t even
 
 static void axp192_monitor_task(void *pvParameters)
 {
-    static bool hardware_demo_completed = false;  // 硬件演示完成标记
-    static bool button_monitoring_initialized = false;  // 按键监控初始化标记
+    static bool hardware_demo_completed = false;  // Hardware demo completion flag
+    static bool button_monitoring_initialized = false;  // Button monitoring initialization flag
     float voltage, current, power, charge_current, discharge_current, temp, vbus_voltage, vbus_current;
     uint8_t battery_level;
     
     while (1) {
-        ESP_LOGI(TAG, "=== 🔋 M5StickC Plus完整系统监控 ===");
+        ESP_LOGI(TAG, "=== 🔋 M5StickC Plus Complete System Monitor ===");
         
-        // 基础电池信息
+        // Basic battery information
         if (axp192_get_battery_voltage(&voltage) == ESP_OK &&
             axp192_get_battery_current(&current) == ESP_OK &&
             axp192_get_battery_power(&power) == ESP_OK &&
             axp192_get_battery_level(&battery_level) == ESP_OK) {
             
-            ESP_LOGI(TAG, "🔋 电池: %.3fV | %.1fmA | %.1fmW | %d%%", 
+            ESP_LOGI(TAG, "🔋 Battery: %.3fV | %.1fmA | %.1fmW | %d%%", 
                      voltage, current, power, battery_level);
         }
         
-        // 高级电流分析
+        // Advanced current analysis
         if (axp192_get_battery_charge_current(&charge_current) == ESP_OK &&
             axp192_get_battery_discharge_current(&discharge_current) == ESP_OK) {
             
-            ESP_LOGI(TAG, "⚡ 电流: 充电%.1fmA | 放电%.1fmA | 净值%.1fmA", 
+            ESP_LOGI(TAG, "⚡ Current: Charge%.1fmA | Discharge%.1fmA | Net%.1fmA", 
                      charge_current, discharge_current, charge_current - discharge_current);
-            ESP_LOGI(TAG, "🔌 状态: %s", axp192_is_charging() ? "充电中" : "未充电");
+            ESP_LOGI(TAG, "🔌 Status: %s", axp192_is_charging() ? "Charging" : "Not charging");
         }
         
-        // 系统状态
+        // System status
         if (axp192_get_internal_temperature(&temp) == ESP_OK) {
-            ESP_LOGI(TAG, "🌡️ 温度: %.1f°C", temp);
+            ESP_LOGI(TAG, "🌡️ Temperature: %.1f°C", temp);
         }
         
-        ESP_LOGI(TAG, "📋 连接: 电池%s | VBUS%s | 5V输出%s", 
+        ESP_LOGI(TAG, "📋 Connection: Battery%s | VBUS%s | 5V Output%s", 
                  axp192_is_battery_present() ? "✅" : "❌",
                  axp192_is_vbus_present() ? "✅" : "❌",
                  axp192_get_exten_status() ? "✅" : "❌");
         
-        // USB/VBUS信息
+        // USB/VBUS information
         if (axp192_is_vbus_present() && 
             axp192_get_vbus_voltage(&vbus_voltage) == ESP_OK &&
             axp192_get_vbus_current(&vbus_current) == ESP_OK) {
