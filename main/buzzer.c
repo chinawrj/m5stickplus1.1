@@ -273,64 +273,31 @@ esp_err_t buzzer_test_patterns(void)
         return ESP_ERR_INVALID_STATE;
     }
     
-    ESP_LOGI(TAG, "Starting buzzer test patterns");
+    ESP_LOGI(TAG, "Starting simplified buzzer test");
     
-    // Test 1: Frequency sweep
-    ESP_LOGI(TAG, "Test 1: Frequency sweep (400Hz - 2000Hz)");
-    for (uint32_t freq = 400; freq <= 2000; freq += 200) {
-        ESP_LOGI(TAG, "  Playing %lu Hz", freq);
-        buzzer_tone(freq, 300);
+    // Test 1: Basic frequency test (simplified)
+    ESP_LOGI(TAG, "Test 1: Basic frequency test");
+    uint32_t test_freqs[] = {800, 1200, 1600};
+    for (int i = 0; i < 3; i++) {
+        ESP_LOGI(TAG, "  Playing %lu Hz", test_freqs[i]);
+        buzzer_tone(test_freqs[i], 200);
         vTaskDelay(pdMS_TO_TICKS(100));
     }
     
-    vTaskDelay(pdMS_TO_TICKS(500));
+    vTaskDelay(pdMS_TO_TICKS(300));
     
-    // Test 2: Musical scale (C4 to C5)
-    ESP_LOGI(TAG, "Test 2: Musical scale (C4 to C5)");
-    uint32_t scale[] = {NOTE_C4, NOTE_D4, NOTE_E4, NOTE_F4, NOTE_G4, NOTE_A4, NOTE_B4, NOTE_C5};
-    for (int i = 0; i < 8; i++) {
-        ESP_LOGI(TAG, "  Note %d: %lu Hz", i + 1, scale[i]);
-        buzzer_tone(scale[i], 250);
-        vTaskDelay(pdMS_TO_TICKS(50));
-    }
-    
-    vTaskDelay(pdMS_TO_TICKS(500));
-    
-    // Test 3: Volume test
-    ESP_LOGI(TAG, "Test 3: Volume levels (25%%, 50%%, 75%%, 100%%)");
-    uint8_t volumes[] = {25, 50, 75, 100};
-    for (int i = 0; i < 4; i++) {
-        buzzer_set_volume(volumes[i]);
-        ESP_LOGI(TAG, "  Volume %d%%", volumes[i]);
-        buzzer_tone(NOTE_A4, 400);
-        vTaskDelay(pdMS_TO_TICKS(200));
-    }
-    
-    // Reset to default volume
-    buzzer_set_volume(50);
-    
-    vTaskDelay(pdMS_TO_TICKS(500));
-    
-    // Test 4: Predefined melodies
-    ESP_LOGI(TAG, "Test 4: Predefined melodies");
+    // Test 2: Essential melodies only
+    ESP_LOGI(TAG, "Test 2: Essential melodies");
     
     ESP_LOGI(TAG, "  Startup melody");
     buzzer_play_startup();
-    vTaskDelay(pdMS_TO_TICKS(800));
+    vTaskDelay(pdMS_TO_TICKS(400));
     
     ESP_LOGI(TAG, "  Success melody");
     buzzer_play_success();
-    vTaskDelay(pdMS_TO_TICKS(800));
+    vTaskDelay(pdMS_TO_TICKS(400));
     
-    ESP_LOGI(TAG, "  Notification melody");
-    buzzer_play_notification();
-    vTaskDelay(pdMS_TO_TICKS(500));
-    
-    ESP_LOGI(TAG, "  Error melody");
-    buzzer_play_error();
-    vTaskDelay(pdMS_TO_TICKS(800));
-    
-    ESP_LOGI(TAG, "Buzzer test patterns completed successfully");
+    ESP_LOGI(TAG, "Simplified buzzer test completed");
     
     return ESP_OK;
 }

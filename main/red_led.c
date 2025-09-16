@@ -468,71 +468,30 @@ esp_err_t red_led_test_patterns(void)
         return ESP_ERR_INVALID_STATE;
     }
     
-    ESP_LOGI(TAG, "Starting comprehensive LED test patterns");
+    ESP_LOGI(TAG, "Starting simplified LED test");
     
-    // Test 1: Basic on/off
-    ESP_LOGI(TAG, "Test 1: Basic ON/OFF control");
+    // Test 1: Basic on/off/toggle
+    ESP_LOGI(TAG, "Test 1: Basic control");
     red_led_on();
-    vTaskDelay(pdMS_TO_TICKS(500));
+    vTaskDelay(pdMS_TO_TICKS(300));
     red_led_off();
-    vTaskDelay(pdMS_TO_TICKS(500));
+    vTaskDelay(pdMS_TO_TICKS(300));
     
-    // Test 2: Toggle functionality
-    ESP_LOGI(TAG, "Test 2: Toggle functionality");
-    for (int i = 0; i < 5; i++) {
-        red_led_toggle();
-        vTaskDelay(pdMS_TO_TICKS(200));
-    }
-    red_led_off();
-    vTaskDelay(pdMS_TO_TICKS(500));
-    
-    // Test 3: Different blink patterns
-    ESP_LOGI(TAG, "Test 3: Blink patterns");
-    ESP_LOGI(TAG, "  Fast blink");
+    // Test 2: Fast blink pattern
+    ESP_LOGI(TAG, "Test 2: Fast blink");
     red_led_set_blink_state(LED_STATE_BLINK_FAST);
-    vTaskDelay(pdMS_TO_TICKS(500));
+    vTaskDelay(pdMS_TO_TICKS(600));
     
-    ESP_LOGI(TAG, "  Normal blink");
-    red_led_set_blink_state(LED_STATE_BLINK_NORMAL);
-    vTaskDelay(pdMS_TO_TICKS(800));
-    
-    ESP_LOGI(TAG, "  Slow blink");
-    red_led_set_blink_state(LED_STATE_BLINK_SLOW);
-    vTaskDelay(pdMS_TO_TICKS(1200));
-    
-    // Test 4: Status indications
-    ESP_LOGI(TAG, "Test 4: Status indication patterns");
+    // Test 3: Essential status indications
+    ESP_LOGI(TAG, "Test 3: Status indications");
     ESP_LOGI(TAG, "  Boot indication");
     red_led_indicate_boot();
-    vTaskDelay(pdMS_TO_TICKS(500));
+    vTaskDelay(pdMS_TO_TICKS(300));
     
     ESP_LOGI(TAG, "  Success indication");
     red_led_indicate_success();
-    vTaskDelay(pdMS_TO_TICKS(500));
     
-    ESP_LOGI(TAG, "  Warning indication");
-    red_led_indicate_warning();
-    vTaskDelay(pdMS_TO_TICKS(500));
-    
-    ESP_LOGI(TAG, "  Processing indication (breathing)");
-    red_led_indicate_processing();
-    vTaskDelay(pdMS_TO_TICKS(500));
-    
-    // Test 5: Morse code demo
-    ESP_LOGI(TAG, "Test 5: Morse code transmission");
-    ESP_LOGI(TAG, "  Transmitting 'SOS'");
-    red_led_morse_code("SOS", 200);
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    
-    ESP_LOGI(TAG, "  Transmitting 'M5'");
-    red_led_morse_code("M5", 150);
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    
-    // Test 6: Final success indication
-    ESP_LOGI(TAG, "Test 6: Final success indication");
-    red_led_indicate_success();
-    
-    ESP_LOGI(TAG, "All LED test patterns completed successfully");
+    ESP_LOGI(TAG, "Simplified LED test completed");
     
     return ESP_OK;
 }
