@@ -33,6 +33,7 @@
 #include "st7789_lcd.h"
 #include "buzzer.h"
 #include "red_led.h"
+#include "button.h"
 
 #define ESPNOW_MAXDELAY 512
 
@@ -381,9 +382,45 @@ static void example_espnow_deinit(example_espnow_send_param_t *send_param)
     esp_now_deinit();
 }
 
+// 按键中断回调函数
+static void button_interrupt_callback(button_id_t button_id, button_event_t event, uint32_t press_duration)
+{
+    const char* event_names[] = {
+        "PRESSED", "RELEASED", "SHORT_PRESS", "LONG_PRESS", "NONE"
+    };
+    
+    ESP_LOGI(TAG, "🔘 %s %s (duration: %lums)", 
+             button_get_name(button_id), 
+             event_names[event], 
+             press_duration);
+             
+    // 可以在这里添加具体的按键响应逻辑
+    switch (button_id) {
+        case BUTTON_A:
+            if (event == BUTTON_EVENT_SHORT_PRESS) {
+                ESP_LOGI(TAG, "🔘 Button A短按 - 可以实现功能切换");
+            } else if (event == BUTTON_EVENT_LONG_PRESS) {
+                ESP_LOGI(TAG, "🔘 Button A长按 - 可以实现设置模式");
+            }
+            break;
+            
+        case BUTTON_B:
+            if (event == BUTTON_EVENT_SHORT_PRESS) {
+                ESP_LOGI(TAG, "🔘 Button B短按 - 可以实现确认操作");
+            } else if (event == BUTTON_EVENT_LONG_PRESS) {
+                ESP_LOGI(TAG, "🔘 Button B长按 - 可以实现重启功能");
+            }
+            break;
+            
+        default:
+            break;
+    }
+}
+
 static void axp192_monitor_task(void *pvParameters)
 {
     static bool hardware_demo_completed = false;  // 硬件演示完成标记
+    static bool button_monitoring_initialized = false;  // 按键监控初始化标记
     float voltage, current, power, charge_current, discharge_current, temp, vbus_voltage, vbus_current;
     uint8_t battery_level;
     
@@ -548,6 +585,31 @@ static void axp192_monitor_task(void *pvParameters)
                 ESP_LOGE(TAG, "🔴 红色LED初始化失败: %s", esp_err_to_name(led_ret));
             }
             
+            // 8. 按键驱动演示
+            ESP_LOGI(TAG, "🔘 开始按键驱动演示");
+            esp_err_t btn_ret = button_init();
+            if (btn_ret == ESP_OK) {
+                ESP_LOGI(TAG, "🔘 按键驱动初始化成功");
+                ESP_LOGI(TAG, "🧪 开始按键测试...");
+                
+                // 执行按键测试
+                btn_ret = button_test_all_functions();
+                if (btn_ret == ESP_OK) {
+                    ESP_LOGI(TAG, "🧪 按键测试完成");
+                } else {
+                    ESP_LOGE(TAG, "🔘 按键测试失败: %s", esp_err_to_name(btn_ret));
+                }
+                
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                
+                // 清理按键资源
+                ESP_LOGI(TAG, "🧹 清理按键资源");
+                button_deinit();
+                
+            } else {
+                ESP_LOGE(TAG, "🔘 按键驱动初始化失败: %s", esp_err_to_name(btn_ret));
+            }
+            
             ESP_LOGI(TAG, "💤 关闭所有外设");
             
             axp192_power_tft_backlight(false);   // 关闭屏幕背光
@@ -566,6 +628,35 @@ static void axp192_monitor_task(void *pvParameters)
             ESP_LOGI(TAG, "✅ 硬件演示完成，进入持续监控模式");
             
             hardware_demo_completed = true;  // 标记演示已完成
+        }
+        
+        // 按键监控初始化（仅在硬件演示完成后进行持续监控）
+        if (hardware_demo_completed && !button_monitoring_initialized) {
+            ESP_LOGI(TAG, "🔘 初始化按键持续监控模式");
+            esp_err_t btn_ret = button_init();
+            if (btn_ret == ESP_OK) {
+                // 设置中断回调
+                button_set_interrupt_callback(button_interrupt_callback);
+                button_set_interrupt_mode(true);
+                button_monitoring_initialized = true;
+                ESP_LOGI(TAG, "🔘 按键监控模式已启用 (中断+轮询)");
+            } else {
+                ESP_LOGE(TAG, "🔘 按键监控初始化失败: %s", esp_err_to_name(btn_ret));
+            }
+        }
+        
+        // 按键轮询检测（在电池监控的同时进行）
+        if (button_monitoring_initialized) {
+            for (int i = 0; i < BUTTON_COUNT; i++) {
+                button_event_t event = button_poll_event(i);
+                if (event != BUTTON_EVENT_NONE) {
+                    button_state_t state;
+                    if (button_get_state(i, &state) == ESP_OK) {
+                        ESP_LOGI(TAG, "🔘 POLL: %s - Event %d (duration: %lums, count: %lu)", 
+                                 button_get_name(i), event, state.press_duration, state.press_count);
+                    }
+                }
+            }
         }
         
         ESP_LOGI(TAG, "========================================");
