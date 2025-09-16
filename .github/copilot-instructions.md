@@ -38,14 +38,14 @@ source ~/esp/esp-idf/export.sh && idf.py set-target esp32
 # Build the project
 source ~/esp/esp-idf/export.sh && idf.py build
 
-# Flash and monitor with 250K baud rate (recommended for M5StickC Plus)
-source ~/esp/esp-idf/export.sh && idf.py -b 250000 flash monitor
+# Flash and monitor with 115200 baud rate (recommended for M5StickC Plus)
+source ~/esp/esp-idf/export.sh && idf.py -b 115200 flash monitor
 
-# Alternative: Flash only with 250K baud rate
-source ~/esp/esp-idf/export.sh && idf.py -b 250000 flash
+# Alternative: Flash only with 115200 baud rate
+source ~/esp/esp-idf/export.sh && idf.py -b 115200 flash
 
-# Monitor only with 250K baud rate
-source ~/esp/esp-idf/export.sh && idf.py -b 250000 monitor
+# Monitor only with 115200 baud rate
+source ~/esp/esp-idf/export.sh && idf.py -b 115200 monitor
 
 # Clean build (when needed)
 source ~/esp/esp-idf/export.sh && idf.py fullclean
