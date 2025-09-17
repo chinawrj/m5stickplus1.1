@@ -38,13 +38,10 @@ source ~/esp/esp-idf/export.sh && idf.py set-target esp32
 # Build the project
 source ~/esp/esp-idf/export.sh && idf.py build
 
-# Flash and monitor with 115200 baud rate (recommended for M5StickC Plus)
-source ~/esp/esp-idf/export.sh && idf.py -b 115200 flash monitor
+# Must Flash only with 1500000 baud rate
+source ~/esp/esp-idf/export.sh && idf.py -b 1500000 flash
 
-# Alternative: Flash only with 115200 baud rate
-source ~/esp/esp-idf/export.sh && idf.py -b 115200 flash
-
-# Monitor only with 115200 baud rate
+# Must Monitor with 115200 baud rate
 source ~/esp/esp-idf/export.sh && idf.py -b 115200 monitor
 
 # Clean build (when needed)
@@ -257,107 +254,6 @@ void hardware_self_test(void) {
 - Input device polling: 30ms (`CONFIG_LV_INDEV_DEF_READ_PERIOD=30`)
 - SPI clock optimization: Start with 10MHz, increase to 20MHz if stable
 
-## Common Pitfalls & Solutions
-
-### 1. Display Issues
-**Problem**: Black screen or corrupted display  
-**Solutions**:
-- Verify power sequence: AXP192 → TFT → Backlight
-- Check gap settings: `esp_lcd_panel_set_gap(panel_handle, 52, 40)`
-- Enable color byte swap: `CONFIG_LV_COLOR_16_SWAP=y`
-- Test with solid color fills before complex graphics
-
-### 2. LVGL Thread Safety
-**Problem**: System crashes or corrupted UI  
-**Solutions**:
-- Ensure LVGL calls are in dedicated tasks only
-- Use global flags for task synchronization
-- Never call LVGL from ISRs or other hardware tasks
-
-### 3. Power Management
-**Problem**: Hardware not responding or damaged  
-**Solutions**:
-- Always use safe power APIs (`axp192_power_*` functions)
-- Verify voltages with official M5StickC Plus documentation
-- Implement proper error handling and cleanup
-
-## Integration with External Libraries
-
-### LVGL Integration Best Practices
-```c
-// Proper LVGL object creation pattern
-lv_obj_t *create_button_widget(lv_obj_t *parent) {
-    lv_obj_t *btn = lv_btn_create(parent);
-    lv_obj_set_size(btn, 100, 40);
-    lv_obj_center(btn);
-    
-    // Add text label
-    lv_obj_t *label = lv_label_create(btn);
-    lv_label_set_text(label, "Click Me");
-    lv_obj_center(label);
-    
-    // Set event handler
-    lv_obj_add_event_cb(btn, button_event_handler, LV_EVENT_CLICKED, NULL);
-    
-    return btn;
-}
-```
-
-### Component Dependencies
-- LVGL: Use managed component `lvgl/lvgl: ^8.*` in `idf_component.yml`
-- ESP-IDF: Minimum version 5.5.1 for LCD driver support
-- CMake: Ensure proper component linking in `CMakeLists.txt`
-
-## Security & Safety Considerations
-
-### 1. Hardware Protection
-- Implement voltage verification after power operations
-- Use watchdog timers for critical operations
-- Add timeout protection for I2C communications
-- Implement graceful shutdown on low battery
-
-### 2. Code Quality
-- Always check return values from hardware functions
-- Use appropriate log levels (DEBUG for development, INFO for production)
-- Implement proper resource cleanup in error paths
-- Use static analysis tools to catch potential issues
-
 ## Examples & Code Templates
-
-### Task Creation Template
-```c
-static void your_task(void *pvParameters) {
-    ESP_LOGI(TAG, "Task started");
-    
-    while (1) {
-        // Your task logic here
-        
-        // Always include task delay
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-}
-
-// In app_main()
-xTaskCreate(your_task, "your_task", 4096, NULL, 5, NULL);
-```
-
-### LVGL Widget Creation Template
-```c
-esp_err_t create_main_screen(void) {
-    lv_obj_t *scr = lv_scr_act();
-    
-    // Clear background
-    lv_obj_set_style_bg_color(scr, lv_color_black(), LV_PART_MAIN);
-    
-    // Create main container
-    lv_obj_t *main_cont = lv_obj_create(scr);
-    lv_obj_set_size(main_cont, ST7789_LCD_H_RES - 10, ST7789_LCD_V_RES - 10);
-    lv_obj_center(main_cont);
-    
-    // Add your widgets here
-    
-    return ESP_OK;
-}
-```
 
 Remember: This is an embedded system with limited resources. Always prioritize reliability, safety, and efficient resource usage over complex features.

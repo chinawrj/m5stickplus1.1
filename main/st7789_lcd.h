@@ -19,7 +19,7 @@
 // Display specifications for ST7789v2
 #define ST7789_LCD_H_RES        135
 #define ST7789_LCD_V_RES        240
-#define ST7789_LCD_PIXEL_CLOCK  (10 * 1000 * 1000)  // 10MHz for stability
+#define ST7789_LCD_PIXEL_CLOCK  (20 * 1000 * 1000)  // 20MHz for better clarity
 
 // SPI Host configuration
 #define ST7789_SPI_HOST         SPI2_HOST

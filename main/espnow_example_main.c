@@ -35,6 +35,7 @@
 #include "red_led.h"
 #include "button.h"
 #include "lvgl_init.h"
+#include "system_monitor.h"
 
 #define ESPNOW_MAXDELAY 512
 
@@ -722,6 +723,22 @@ void app_main(void)
     } else {
         ESP_LOGI(TAG, "AXP192 initialized successfully");
     }
+
+    // Initialize system monitor
+    ESP_LOGI(TAG, "🔍 Initializing system monitor");
+    ret = system_monitor_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "System monitor initialization failed: %s", esp_err_to_name(ret));
+        return;
+    }
+    
+    // Start system monitoring task
+    ret = system_monitor_start();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start system monitor: %s", esp_err_to_name(ret));
+        return;
+    }
+    ESP_LOGI(TAG, "System monitor started successfully");
 
     // 直接启动LVGL演示
     ESP_LOGI(TAG, "🖥️  开始LVGL UI系统演示");
