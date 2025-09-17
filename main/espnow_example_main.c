@@ -34,6 +34,7 @@
 #include "buzzer.h"
 #include "red_led.h"
 #include "button.h"
+#include "lvgl_init.h"
 
 #define ESPNOW_MAXDELAY 512
 
@@ -581,6 +582,25 @@ static void axp192_monitor_task(void *pvParameters)
                 ESP_LOGI(TAG, "🧹 清理LED资源");
                 red_led_deinit();
                 
+                // LVGL UI 系统演示 (提前到LED之后直接运行)
+                ESP_LOGI(TAG, "🖥️  开始LVGL UI系统演示");
+                // 重新开启显示屏用于UI演示
+                axp192_power_tft_display(true);      // 开启屏幕显示
+                axp192_power_tft_backlight(true);    // 开启屏幕背光
+                vTaskDelay(pdMS_TO_TICKS(500));       // 等待电源稳定
+                
+                // 初始化LVGL GUI
+                esp_err_t lvgl_ret = lvgl_init_with_m5stick_lcd();
+                if (lvgl_ret == ESP_OK) {
+                    ESP_LOGI(TAG, "🖥️  LVGL初始化成功");
+                    ESP_LOGI(TAG, "🎨 LVGL demo已运行 - 显示文本界面");
+                    
+                    // LVGL在后台运行，这里可以继续其他任务
+                    vTaskDelay(pdMS_TO_TICKS(5000));  // 显示5秒
+                } else {
+                    ESP_LOGE(TAG, "🎨 LVGL初始化失败: %s", esp_err_to_name(lvgl_ret));
+                }
+
             } else {
                 ESP_LOGE(TAG, "🔴 红色LED初始化失败: %s", esp_err_to_name(led_ret));
             }
@@ -608,6 +628,25 @@ static void axp192_monitor_task(void *pvParameters)
                 
             } else {
                 ESP_LOGE(TAG, "🔘 按键驱动初始化失败: %s", esp_err_to_name(btn_ret));
+            }
+            
+            // 9. Simple UI 系统演示
+            ESP_LOGI(TAG, "🖥️  开始LVGL UI系统演示");
+            // 重新开启显示屏用于UI演示
+            axp192_power_tft_display(true);      // 开启屏幕显示
+            axp192_power_tft_backlight(true);    // 开启屏幕背光
+            vTaskDelay(pdMS_TO_TICKS(500));       // 等待电源稳定
+            
+            // 初始化LVGL GUI
+            esp_err_t lvgl_ret = lvgl_init_with_m5stick_lcd();
+            if (lvgl_ret == ESP_OK) {
+                ESP_LOGI(TAG, "🖥️  LVGL初始化成功");
+                ESP_LOGI(TAG, "🎨 LVGL demo已运行 - 显示文本界面");
+                
+                // LVGL在后台运行，这里可以继续其他任务
+                vTaskDelay(pdMS_TO_TICKS(5000));  // 显示5秒
+            } else {
+                ESP_LOGE(TAG, "🎨 LVGL初始化失败: %s", esp_err_to_name(lvgl_ret));
             }
             
             ESP_LOGI(TAG, "💤 关闭所有外设");
@@ -679,13 +718,29 @@ void app_main(void)
     ret = axp192_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "AXP192 initialization failed: %s", esp_err_to_name(ret));
+        return;
     } else {
         ESP_LOGI(TAG, "AXP192 initialized successfully");
-        
-        // 创建AXP192监控任务 (增加栈大小以支持LCD操作)
-        xTaskCreate(axp192_monitor_task, "axp192_monitor", 8192, NULL, 5, NULL);
     }
 
-    example_wifi_init();
-    example_espnow_init();
+    // 直接启动LVGL演示
+    ESP_LOGI(TAG, "🖥️  开始LVGL UI系统演示");
+    
+    // 开启显示屏电源
+    axp192_power_tft_display(true);      // 开启屏幕显示
+    axp192_power_tft_backlight(true);    // 开启屏幕背光
+    vTaskDelay(pdMS_TO_TICKS(500));       // 等待电源稳定
+    
+    // 初始化LVGL GUI
+    esp_err_t lvgl_ret = lvgl_init_with_m5stick_lcd();
+    if (lvgl_ret == ESP_OK) {
+        ESP_LOGI(TAG, "🖥️  LVGL初始化成功");
+        ESP_LOGI(TAG, "🎨 LVGL demo已运行 - 显示文本界面");
+    } else {
+        ESP_LOGE(TAG, "🎨 LVGL初始化失败: %s", esp_err_to_name(lvgl_ret));
+    }
+
+    // 可选：启动WiFi和ESP-NOW（如果需要网络功能）
+    // example_wifi_init();
+    // example_espnow_init();
 }
