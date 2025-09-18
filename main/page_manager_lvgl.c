@@ -27,9 +27,6 @@ static uint32_t g_key_nav_count = 0;
 static uint32_t g_manual_nav_count = 0;
 static SemaphoreHandle_t g_stats_mutex = NULL;
 
-// Navigation focus object (invisible, just for receiving key events)
-static lv_obj_t *g_nav_focus_obj = NULL;
-
 /**
  * @brief Screen-level key event handler (兜底处理器)
  * 
@@ -59,8 +56,16 @@ static void screen_key_event_cb(lv_event_t *e)
     uint32_t key = lv_event_get_key(e);
     ESP_LOGI(TAG, "🏠 Screen-level key event: %lu", key);
     
-        if (key == LV_KEY_RIGHT) {
-            ESP_LOGI(TAG, "🚀 Screen RIGHT key - navigating to next page");        esp_err_t ret = page_manager_lvgl_next();
+    if (key == LV_KEY_RIGHT) {
+        ESP_LOGI(TAG, "🚀 Screen RIGHT key - navigating to next page");
+        
+        // Update statistics (thread-safe)
+        if (g_stats_mutex && xSemaphoreTake(g_stats_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            g_key_nav_count++;
+            xSemaphoreGive(g_stats_mutex);
+        }
+        
+        esp_err_t ret = page_manager_lvgl_next();
         if (ret == ESP_OK) {
             ESP_LOGI(TAG, "✅ Successfully navigated to page %d (%s)", 
                      page_manager_get_current(), 
@@ -74,133 +79,6 @@ static void screen_key_event_cb(lv_event_t *e)
     } else {
         ESP_LOGI(TAG, "🔹 Screen other key: %lu", key);
     }
-}
-
-/**
- * @brief LVGL key event handler for page navigation
- * 
- * This function is called when key events are sent to objects in the navigation group.
- * It handles LV_KEY_NEXT events to trigger page navigation.
- * 
- * @param e LVGL event containing key information
- */
-static void page_nav_key_event_cb(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    
-    // 增强日志 - 显示所有事件
-    ESP_LOGI(TAG, "🎯 Focus object event received: code=%d", code);
-    
-    if (code == LV_EVENT_FOCUSED) {
-        ESP_LOGI(TAG, "Focus object received focus");
-        return;
-    }
-    
-    if (code == LV_EVENT_DEFOCUSED) {
-        ESP_LOGI(TAG, "Focus object lost focus");
-        return;
-    }
-    
-    if (!g_key_events_enabled) {
-        ESP_LOGI(TAG, "Key events disabled, ignoring event");
-        return;
-    }
-    
-    if (code == LV_EVENT_KEY) {
-        // LVGL 9.x: Get key from event parameter
-        uint32_t key = lv_event_get_key(e);
-        
-        ESP_LOGI(TAG, "🔧 Focus object key event received: %lu", key);
-        
-        if (key == LV_KEY_RIGHT) {
-            ESP_LOGI(TAG, "🚀 RIGHT key pressed - navigating to next page");
-            
-            // Update statistics (thread-safe)
-            if (g_stats_mutex && xSemaphoreTake(g_stats_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                g_key_nav_count++;
-                xSemaphoreGive(g_stats_mutex);
-            }
-            
-            // Navigate to next page using page manager
-            esp_err_t ret = page_manager_lvgl_next();
-            if (ret == ESP_OK) {
-                ESP_LOGI(TAG, "✅ Successfully navigated to page %d (%s)", 
-                         page_manager_get_current(), 
-                         page_manager_get_name(page_manager_get_current()));
-            } else {
-                ESP_LOGW(TAG, "❌ Failed to navigate to next page: %s", esp_err_to_name(ret));
-            }
-            return;
-        }
-        
-        if (key == LV_KEY_ENTER) {
-            ESP_LOGI(TAG, "⭐ ENTER key pressed - page action");
-            // Handle OK action - currently not implemented
-            return;
-        }
-        
-        ESP_LOGI(TAG, "⚠️ Unhandled key in focus object: %lu", key);
-    }
-    
-    // Additional events for debugging
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Focus object clicked");
-    }
-    
-    if (code == LV_EVENT_PRESSED) {
-        ESP_LOGI(TAG, "Focus object pressed");
-    }
-}
-
-/**
- * @brief Create invisible focus object for key event handling
- * 
- * This object serves as a focus target for the LVGL group system,
- * allowing us to receive key events for navigation.
- */
-static esp_err_t create_navigation_focus_object(void)
-{
-    ESP_LOGI(TAG, "Creating navigation focus object...");
-    
-    lv_obj_t *screen = lv_screen_active();
-    if (!screen) {
-        ESP_LOGE(TAG, "No active screen found");
-        return ESP_FAIL;
-    }
-    
-    // Create invisible object that can receive focus
-    g_nav_focus_obj = lv_obj_create(screen);
-    if (!g_nav_focus_obj) {
-        ESP_LOGE(TAG, "Failed to create navigation focus object");
-        return ESP_ERR_NO_MEM;
-    }
-    
-    // Make it nearly invisible but keep it focusable for key events
-    lv_obj_set_size(g_nav_focus_obj, 1, 1);
-    lv_obj_set_pos(g_nav_focus_obj, 0, 0);  // Position at corner
-    
-    // Make it transparent instead of hidden to allow key focus
-    lv_obj_set_style_opa(g_nav_focus_obj, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_opa(g_nav_focus_obj, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_bg_opa(g_nav_focus_obj, LV_OPA_TRANSP, 0);
-    
-    // Clear unnecessary flags
-    lv_obj_clear_flag(g_nav_focus_obj, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(g_nav_focus_obj, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(g_nav_focus_obj, LV_OBJ_FLAG_GESTURE_BUBBLE);
-    
-    // Critical: Ensure object can receive focus and key events
-    lv_obj_add_flag(g_nav_focus_obj, LV_OBJ_FLAG_CLICK_FOCUSABLE);
-    
-    ESP_LOGI(TAG, "Focus object configured: transparent, focusable, key-event ready");
-    
-    // Add key event handler
-    lv_obj_add_event_cb(g_nav_focus_obj, page_nav_key_event_cb, LV_EVENT_KEY, NULL);
-    lv_obj_add_event_cb(g_nav_focus_obj, page_nav_key_event_cb, LV_EVENT_FOCUSED, NULL);
-    lv_obj_add_event_cb(g_nav_focus_obj, page_nav_key_event_cb, LV_EVENT_DEFOCUSED, NULL);
-    
-    ESP_LOGI(TAG, "Navigation focus object created successfully");
-    return ESP_OK;
 }
 
 // Public API implementation
@@ -268,27 +146,7 @@ esp_err_t page_manager_lvgl_init(lv_display_t *display, lv_indev_t *indev)
     // Add screen to group so it can receive key events when no other object has focus
     lv_group_add_obj(g_nav_group, screen);
     
-    ESP_LOGI(TAG, "Screen added to group with key event handler");
-    
-    // Create navigation focus object
-    ret = create_navigation_focus_object();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to create navigation focus object");
-        lv_group_delete(g_nav_group);
-        g_nav_group = NULL;
-        vSemaphoreDelete(g_stats_mutex);
-        g_stats_mutex = NULL;
-        page_manager_deinit();
-        return ret;
-    }
-    
-    // Add focus object to group
-    lv_group_add_obj(g_nav_group, g_nav_focus_obj);
-    
-    // Focus the navigation object to receive key events (改变focus策略)
-    lv_group_focus_obj(g_nav_focus_obj);
-    
-    ESP_LOGI(TAG, "Focus object focused for key events, screen as backup");
+    ESP_LOGI(TAG, "Screen added to group with key event handler - ready for navigation");
     
     // Initialize state
     g_key_events_enabled = true;
@@ -308,14 +166,7 @@ void page_manager_lvgl_set_key_enabled(bool enabled)
     g_key_events_enabled = enabled;
     ESP_LOGI(TAG, "LVGL key event handling %s", enabled ? "enabled" : "disabled");
     
-    // Set focus on/off navigation object based on enabled state
-    if (g_nav_group && g_nav_focus_obj) {
-        if (enabled) {
-            lv_group_focus_obj(g_nav_focus_obj);
-        } else {
-            lv_group_focus_next(g_nav_group);  // Move focus away
-        }
-    }
+    // Key events are now handled at screen level, no need to manage focus
 }
 
 bool page_manager_lvgl_is_key_enabled(void)
@@ -394,12 +245,7 @@ esp_err_t page_manager_lvgl_deinit(void)
     
     g_key_events_enabled = false;
     
-    // Clean up LVGL group and objects
-    if (g_nav_focus_obj) {
-        lv_obj_delete(g_nav_focus_obj);
-        g_nav_focus_obj = NULL;
-    }
-    
+    // Clean up LVGL group
     if (g_nav_group) {
         lv_group_delete(g_nav_group);
         g_nav_group = NULL;
