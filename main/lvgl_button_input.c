@@ -147,20 +147,17 @@ static void button_to_lvgl_callback_isr(button_id_t button_id, button_event_t ev
     // Update button state (ISR-safe via message buffer)
     send_button_event_from_isr(key, state);
     
-    // 🔥 事件驱动模式：主动触发LVGL立即读取（基于官方SDL示例）
-    if (g_indev && g_input_enabled) {
-        lv_indev_read(g_indev);
-        ESP_LOGD(TAG, "🚀 Event-driven: Triggered immediate LVGL read for key=%d, state=%d", 
-                 (int)key, (int)state);
-    }
+    // 🔥 ISR SAFETY: REMOVED direct LVGL call from ISR context
+    // LVGL functions must NEVER be called from interrupt context
+    // LVGL will be read by its timer task in polling mode
 }
 
 /**
- * @brief LVGL input device read callback for keypad (EVENT-DRIVEN MODE)
+ * @brief LVGL input device read callback for keypad (TIMER MODE)
  * 
- * This function is called by LVGL when lv_indev_read() is triggered from
- * button interrupt handlers. In event-driven mode, this is only called
- * when there are actual hardware events to process.
+ * This function is called by LVGL's timer task periodically (every ~30ms).
+ * It safely reads button events from the message buffer populated by ISR.
+ * This avoids calling LVGL functions directly from interrupt context.
  */
 static void lvgl_keypad_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
@@ -187,9 +184,9 @@ static void lvgl_keypad_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
             data->key = 0;
         }
         
-        // Log event-driven behavior
+        // Log timer-based behavior
         if (event.state == LV_INDEV_STATE_PRESSED && data->key != 0) {
-            ESP_LOGI(TAG, "🔑 EVENT-DRIVEN read: key=%"PRIu32", state=PRESSED", data->key);
+            ESP_LOGI(TAG, "🔑 TIMER read: key=%"PRIu32", state=PRESSED", data->key);
         }
         
         ESP_LOGD(TAG, "Message buffer: Read complete message key=%d, state=%d", 
@@ -267,9 +264,9 @@ esp_err_t lvgl_button_input_init(void)
     lv_indev_set_type(g_indev, LV_INDEV_TYPE_KEYPAD);
     lv_indev_set_read_cb(g_indev, lvgl_keypad_read_cb);
     
-    // 🔥 设置为事件驱动模式（基于官方SDL示例）
-    lv_indev_set_mode(g_indev, LV_INDEV_MODE_EVENT);
-    ESP_LOGI(TAG, "Input device set to EVENT-DRIVEN mode");
+    // 🔥 设置为定时器模式（安全的轮询模式，避免ISR调用LVGL）
+    lv_indev_set_mode(g_indev, LV_INDEV_MODE_TIMER);
+    ESP_LOGI(TAG, "Input device set to TIMER mode (safe polling, no ISR calls to LVGL)");
     
     // Initialize state
     g_last_key = LVGL_KEY_NONE;
@@ -280,7 +277,7 @@ esp_err_t lvgl_button_input_init(void)
     g_input_initialized = true;
     
     ESP_LOGI(TAG, "LVGL button input device initialized successfully");
-    ESP_LOGI(TAG, "Mode: EVENT-DRIVEN (immediate response on button press)");
+    ESP_LOGI(TAG, "Mode: TIMER (safe polling mode, LVGL reads at 30ms intervals)");
     ESP_LOGI(TAG, "Button mapping: A=OK/ENTER, B=RIGHT");
     
     return ESP_OK;
@@ -313,7 +310,7 @@ bool lvgl_button_input_is_event_driven(void)
     if (g_indev) {
         return lv_indev_get_mode(g_indev) == LV_INDEV_MODE_EVENT;
     }
-    return false;
+    return false;  // Now always returns false since we use TIMER mode
 }
 
 lvgl_key_t lvgl_button_input_get_last_key(void)
