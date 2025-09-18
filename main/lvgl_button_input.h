@@ -74,6 +74,13 @@ void lvgl_button_input_set_enabled(bool enabled);
 bool lvgl_button_input_is_enabled(void);
 
 /**
+ * @brief Check if input device is in event-driven mode
+ * 
+ * @return true if device is in LV_INDEV_MODE_EVENT, false otherwise
+ */
+bool lvgl_button_input_is_event_driven(void);
+
+/**
  * @brief Get the last key pressed (for debugging)
  * 
  * @return lvgl_key_t Last key that was pressed, or LVGL_KEY_NONE

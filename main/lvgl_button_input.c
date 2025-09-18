@@ -2,7 +2,15 @@
  * @file lvgl_button_input.c
  * @brief LVGL Input Device Driver Implementation for M5StickC Plus 1.1 GPIO Buttons
  * 
- * This driver bridges the GPIO button system with LVGL's input device framework,
+ * This driver b    // Update button state (ISR-safe via message buffer)
+    send_button_event_from_isr(key, state);
+    
+    // 🔥 事件驱动模式：主动触发LVGL立即读取（基于官方SDL示例）
+    if (g_indev && g_input_enabled) {
+        lv_indev_read(g_indev);
+        ESP_LOGD(TAG, "🚀 Event-driven: Triggered immediate LVGL read for key=%d, state=%d", 
+                 (int)key, (int)state);
+    }e GPIO button system with LVGL's input device framework,
  * providing thread-safe button press detection and key event generation.
  */
 
@@ -10,7 +18,7 @@
 #include "button.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
+#include "freertos/message_buffer.h"
 #include <string.h>
 
 static const char *TAG = "LVGL_BTN_INPUT";
@@ -20,28 +28,51 @@ static bool g_input_initialized = false;
 static bool g_input_enabled = true;
 static lv_indev_t *g_indev = NULL;
 
-// Button state tracking (thread-safe)
-static SemaphoreHandle_t g_button_mutex = NULL;
-static volatile lvgl_key_t g_current_key = LVGL_KEY_NONE;
+// Button event structure for message buffer
+typedef struct {
+    lvgl_key_t key;
+    lv_indev_state_t state;
+} button_event_data_t;
+
+// Message buffer for ISR-safe button events (single producer/consumer)
+static MessageBufferHandle_t g_button_message_buffer = NULL;
+#define BUTTON_MESSAGE_BUFFER_SIZE (sizeof(button_event_data_t) * 2 + 8)  // Max 2 messages + header overhead
+#define BUTTON_EVENT_SIZE sizeof(button_event_data_t)
+
+// Fallback state for when stream buffer is empty
 static volatile lvgl_key_t g_last_key = LVGL_KEY_NONE;
-static volatile lv_indev_state_t g_key_state = LV_INDEV_STATE_RELEASED;
 
 // Statistics tracking
 static uint32_t g_button_a_count = 0;
 static uint32_t g_button_b_count = 0;
 
 /**
- * @brief Thread-safe button state update
+ * @brief ISR-safe button event sender using Message Buffer
+ * 
+ * Sends button events from ISR to LVGL task using single-producer/single-consumer
+ * message buffer. This ensures message integrity and is interrupt-safe.
  */
-static void update_button_state(lvgl_key_t key, lv_indev_state_t state)
+static void send_button_event_from_isr(lvgl_key_t key, lv_indev_state_t state)
 {
-    if (g_button_mutex && xSemaphoreTake(g_button_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        g_current_key = key;
-        g_key_state = state;
-        
+    if (g_button_message_buffer == NULL) {
+        return;
+    }
+    
+    button_event_data_t event = {
+        .key = key,
+        .state = state
+    };
+    
+    // Send from ISR - non-blocking, ensures message integrity
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    size_t bytes_sent = xMessageBufferSendFromISR(g_button_message_buffer, 
+                                                   &event, 
+                                                   BUTTON_EVENT_SIZE, 
+                                                   &xHigherPriorityTaskWoken);
+    
+    if (bytes_sent == BUTTON_EVENT_SIZE) {
+        g_last_key = key;  // Update fallback state
         if (state == LV_INDEV_STATE_PRESSED) {
-            g_last_key = key;
-            
             // Update statistics
             if (key == LVGL_KEY_OK) {
                 g_button_a_count++;
@@ -56,22 +87,28 @@ static void update_button_state(lvgl_key_t key, lv_indev_state_t state)
             ESP_LOGI(TAG, "Button released: %s", 
                      (key == LVGL_KEY_OK) ? "OK/ENTER" : "RIGHT");
         }
-        
-        xSemaphoreGive(g_button_mutex);
+    } else {
+        ESP_LOGW(TAG, "Message buffer full, button event dropped");
+    }
+    
+    // Wake higher priority task if needed
+    if (xHigherPriorityTaskWoken == pdTRUE) {
+        portYIELD_FROM_ISR();
     }
 }
 
 /**
- * @brief GPIO button callback - converts button events to LVGL keys
+ * @brief GPIO button callback - converts button events to LVGL keys (ISR CONTEXT)
  * 
  * This callback is called from GPIO interrupt context and must be ISR-safe.
- * It converts the hardware button events into LVGL key events.
+ * It converts the hardware button events into LVGL key events and sends them
+ * via message buffer to the LVGL task.
  * 
  * @param button_id Which button triggered the event
  * @param event Type of button event (press/release/long press)
  * @param press_duration Duration of press if applicable
  */
-static void button_to_lvgl_callback(button_id_t button_id, button_event_t event, uint32_t press_duration)
+static void button_to_lvgl_callback_isr(button_id_t button_id, button_event_t event, uint32_t press_duration)
 {
     if (!g_input_enabled) {
         return;
@@ -107,86 +144,63 @@ static void button_to_lvgl_callback(button_id_t button_id, button_event_t event,
             return;  // Ignore other events
     }
     
-    // Update button state (thread-safe)
-    update_button_state(key, state);
+    // Update button state (ISR-safe via message buffer)
+    send_button_event_from_isr(key, state);
+    
+    // 🔥 事件驱动模式：主动触发LVGL立即读取（基于官方SDL示例）
+    if (g_indev && g_input_enabled) {
+        lv_indev_read(g_indev);
+        ESP_LOGD(TAG, "🚀 Event-driven: Triggered immediate LVGL read for key=%d, state=%d", 
+                 (int)key, (int)state);
+    }
 }
 
 /**
- * @brief LVGL input device read callback for keypad
+ * @brief LVGL input device read callback for keypad (EVENT-DRIVEN MODE)
  * 
- * This function is called by LVGL to read key states from our button system.
- * It converts GPIO button states to LVGL key events.
+ * This function is called by LVGL when lv_indev_read() is triggered from
+ * button interrupt handlers. In event-driven mode, this is only called
+ * when there are actual hardware events to process.
  */
 static void lvgl_keypad_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
     (void)indev;  // Unused parameter
     
-    // Thread-safe state reading
-    if (xSemaphoreTake(g_button_mutex, pdMS_TO_TICKS(10)) != pdTRUE) {
-        // If mutex not available, return previous state
-        data->state = g_key_state;
-        data->key = (g_last_key == LVGL_KEY_OK) ? LV_KEY_ENTER : 
-                    (g_last_key == LVGL_KEY_NEXT) ? LV_KEY_NEXT : 0;
-        return;
-    }
+    button_event_data_t event;
     
-    uint32_t current_key = 0;
-    lv_indev_state_t current_state = g_key_state;
+    // Try to receive complete message from message buffer (non-blocking)
+    size_t bytes_received = xMessageBufferReceive(g_button_message_buffer, 
+                                                   &event, 
+                                                   BUTTON_EVENT_SIZE, 
+                                                   0);  // Non-blocking
     
-    // Convert our internal key representation to LVGL keys
-    if (g_current_key == LVGL_KEY_OK) {
-        current_key = LV_KEY_ENTER;
-    } else if (g_current_key == LVGL_KEY_NEXT) {
-        current_key = LV_KEY_RIGHT;  // Button B now maps to RIGHT arrow
-    }
-    
-    xSemaphoreGive(g_button_mutex);
-    
-    // Set LVGL data
-    data->key = current_key;
-    data->state = current_state;
-    
-    // Smart logging - only log meaningful state changes
-    static lv_indev_state_t last_logged_state = LV_INDEV_STATE_RELEASED;
-    static uint32_t last_logged_key = 0;
-    static bool meaningful_change = false;
-    
-    // Detect meaningful state changes (ignore no-key polling)
-    if (current_key != 0 || last_logged_key != 0) {
-        if (current_state != last_logged_state || current_key != last_logged_key) {
-            meaningful_change = true;
-            last_logged_state = current_state;
-            last_logged_key = current_key;
-        }
-    }
-    
-    // Only log meaningful events
-    if (meaningful_change) {
-        if (current_key != 0) {
-            ESP_LOGI(TAG, "🔑 LVGL read: key=%lu, state=%s [STATE CHANGE]", 
-                     current_key, 
-                     current_state == LV_INDEV_STATE_PRESSED ? "PRESSED" : "RELEASED");
+    if (bytes_received == BUTTON_EVENT_SIZE) {
+        // Valid complete message received from message buffer
+        data->state = event.state;
+        
+        // Convert LVGL keys to LVGL key codes
+        if (event.key == LVGL_KEY_OK) {
+            data->key = LV_KEY_ENTER;
+        } else if (event.key == LVGL_KEY_NEXT) {
+            data->key = LV_KEY_RIGHT;  // Button B maps to RIGHT arrow
         } else {
-            ESP_LOGI(TAG, "🔑 LVGL read: key=0, state=RELEASED [CLEARED]");
+            data->key = 0;
         }
-        meaningful_change = false; // Reset flag after logging
-    }
-    
-    // Optional: Very occasional heartbeat for debugging (every ~30 seconds)
-    static uint32_t heartbeat_counter = 0;
-    if (current_key == 0 && (heartbeat_counter++ % 1000) == 0) {
-        ESP_LOGI(TAG, "LVGL heartbeat: no keys pressed");
-    }
-    
-    // Critical: Clear key state after RELEASED to prevent repeated reads
-    if (current_state == LV_INDEV_STATE_RELEASED && current_key != 0) {
-        ESP_LOGI(TAG, "Key cleared - resetting to no-key state");
-        // Take mutex again to clear state
-        if (xSemaphoreTake(g_button_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-            g_current_key = LVGL_KEY_NONE;
-            g_key_state = LV_INDEV_STATE_RELEASED;
-            xSemaphoreGive(g_button_mutex);
+        
+        // Log event-driven behavior
+        if (event.state == LV_INDEV_STATE_PRESSED && data->key != 0) {
+            ESP_LOGI(TAG, "🔑 EVENT-DRIVEN read: key=%"PRIu32", state=PRESSED", data->key);
         }
+        
+        ESP_LOGD(TAG, "Message buffer: Read complete message key=%d, state=%d", 
+                 (int)event.key, (int)event.state);
+    } else {
+        // No complete messages in buffer, return released state with last key
+        data->state = LV_INDEV_STATE_RELEASED;
+        data->key = (g_last_key == LVGL_KEY_OK) ? LV_KEY_ENTER : 
+                    (g_last_key == LVGL_KEY_NEXT) ? LV_KEY_RIGHT : 0;
+        
+        ESP_LOGD(TAG, "Message buffer empty, using fallback state");
     }
 }
 
@@ -194,17 +208,17 @@ static void lvgl_keypad_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 
 esp_err_t lvgl_button_input_init(void)
 {
-    ESP_LOGI(TAG, "Initializing LVGL button input device...");
+    ESP_LOGI(TAG, "Initializing LVGL button input device with Message Buffer...");
     
     if (g_input_initialized) {
         ESP_LOGW(TAG, "LVGL button input already initialized");
         return ESP_OK;
     }
     
-    // Create mutex for thread-safe access
-    g_button_mutex = xSemaphoreCreateMutex();
-    if (g_button_mutex == NULL) {
-        ESP_LOGE(TAG, "Failed to create button mutex");
+    // Create message buffer for ISR-safe button events (prevents message fragmentation)
+    g_button_message_buffer = xMessageBufferCreate(BUTTON_MESSAGE_BUFFER_SIZE);
+    if (g_button_message_buffer == NULL) {
+        ESP_LOGE(TAG, "Failed to create button message buffer");
         return ESP_ERR_NO_MEM;
     }
     
@@ -212,18 +226,18 @@ esp_err_t lvgl_button_input_init(void)
     esp_err_t ret = button_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize button system: %s", esp_err_to_name(ret));
-        vSemaphoreDelete(g_button_mutex);
-        g_button_mutex = NULL;
+        vMessageBufferDelete(g_button_message_buffer);
+        g_button_message_buffer = NULL;
         return ret;
     }
     
     // Set up button callback for LVGL key events
-    ret = button_set_interrupt_callback(button_to_lvgl_callback);
+    ret = button_set_interrupt_callback(button_to_lvgl_callback_isr);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set button callback: %s", esp_err_to_name(ret));
         button_deinit();
-        vSemaphoreDelete(g_button_mutex);
-        g_button_mutex = NULL;
+        vMessageBufferDelete(g_button_message_buffer);
+        g_button_message_buffer = NULL;
         return ret;
     }
     
@@ -233,8 +247,8 @@ esp_err_t lvgl_button_input_init(void)
         ESP_LOGE(TAG, "Failed to enable button interrupts: %s", esp_err_to_name(ret));
         button_set_interrupt_callback(NULL);
         button_deinit();
-        vSemaphoreDelete(g_button_mutex);
-        g_button_mutex = NULL;
+        vMessageBufferDelete(g_button_message_buffer);
+        g_button_message_buffer = NULL;
         return ret;
     }
     
@@ -245,18 +259,20 @@ esp_err_t lvgl_button_input_init(void)
         button_set_interrupt_mode(false);
         button_set_interrupt_callback(NULL);
         button_deinit();
-        vSemaphoreDelete(g_button_mutex);
-        g_button_mutex = NULL;
+        vMessageBufferDelete(g_button_message_buffer);
+        g_button_message_buffer = NULL;
         return ESP_FAIL;
     }
     
     lv_indev_set_type(g_indev, LV_INDEV_TYPE_KEYPAD);
     lv_indev_set_read_cb(g_indev, lvgl_keypad_read_cb);
     
+    // 🔥 设置为事件驱动模式（基于官方SDL示例）
+    lv_indev_set_mode(g_indev, LV_INDEV_MODE_EVENT);
+    ESP_LOGI(TAG, "Input device set to EVENT-DRIVEN mode");
+    
     // Initialize state
-    g_current_key = LVGL_KEY_NONE;
     g_last_key = LVGL_KEY_NONE;
-    g_key_state = LV_INDEV_STATE_RELEASED;
     g_input_enabled = true;
     g_button_a_count = 0;
     g_button_b_count = 0;
@@ -264,7 +280,8 @@ esp_err_t lvgl_button_input_init(void)
     g_input_initialized = true;
     
     ESP_LOGI(TAG, "LVGL button input device initialized successfully");
-        ESP_LOGI(TAG, "Button mapping: A=OK/ENTER, B=RIGHT");
+    ESP_LOGI(TAG, "Mode: EVENT-DRIVEN (immediate response on button press)");
+    ESP_LOGI(TAG, "Button mapping: A=OK/ENTER, B=RIGHT");
     
     return ESP_OK;
 }
@@ -279,19 +296,24 @@ void lvgl_button_input_set_enabled(bool enabled)
     g_input_enabled = enabled;
     ESP_LOGI(TAG, "LVGL button input %s", enabled ? "enabled" : "disabled");
     
-    // Clear current state when disabling
-    if (!enabled && g_button_mutex) {
-        if (xSemaphoreTake(g_button_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-            g_current_key = LVGL_KEY_NONE;
-            g_key_state = LV_INDEV_STATE_RELEASED;
-            xSemaphoreGive(g_button_mutex);
-        }
+    // Clear message buffer when disabling to remove pending events
+    if (!enabled && g_button_message_buffer) {
+        xMessageBufferReset(g_button_message_buffer);
+        ESP_LOGD(TAG, "Message buffer cleared on disable");
     }
 }
 
 bool lvgl_button_input_is_enabled(void)
 {
     return g_input_enabled;
+}
+
+bool lvgl_button_input_is_event_driven(void)
+{
+    if (g_indev) {
+        return lv_indev_get_mode(g_indev) == LV_INDEV_MODE_EVENT;
+    }
+    return false;
 }
 
 lvgl_key_t lvgl_button_input_get_last_key(void)
@@ -329,10 +351,10 @@ esp_err_t lvgl_button_input_deinit(void)
     button_set_interrupt_mode(false);
     button_set_interrupt_callback(NULL);
     
-    // Clean up mutex
-    if (g_button_mutex) {
-        vSemaphoreDelete(g_button_mutex);
-        g_button_mutex = NULL;
+    // Clean up message buffer
+    if (g_button_message_buffer) {
+        vMessageBufferDelete(g_button_message_buffer);
+        g_button_message_buffer = NULL;
     }
     
     g_input_initialized = false;
