@@ -11,6 +11,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include <string.h>
+#include <stdlib.h>  // for abs() function
 
 static const char *TAG = "system_monitor";
 
@@ -19,6 +20,7 @@ static system_data_t g_system_data = {0};
 static SemaphoreHandle_t g_data_mutex = NULL;
 static TaskHandle_t g_monitor_task_handle = NULL;
 static bool g_monitor_running = false;
+static bool g_data_updated = false;  // Data update flag
 
 // Configuration
 #define MONITOR_TASK_STACK_SIZE     4096
@@ -81,12 +83,37 @@ static void update_system_data(void) {
     
     // Update global data with mutex protection
     if (xSemaphoreTake(g_data_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        memcpy(&g_system_data, &new_data, sizeof(system_data_t));
-        xSemaphoreGive(g_data_mutex);
+        // Compare with existing data to detect actual changes
+        bool data_changed = false;
         
-        ESP_LOGD(TAG, "System data updated: Bat=%.2fV (%d%%), Temp=%.1f°C, Heap=%"PRIu32"KB", 
-                new_data.battery_voltage, new_data.battery_percentage, 
-                new_data.internal_temp, new_data.free_heap / 1024);
+        // Check if this is the first valid data or if key values have changed
+        if (!g_system_data.data_valid) {
+            // First time getting valid data
+            data_changed = true;
+        } else {
+            // Compare key values that matter for UI display
+            if (g_system_data.battery_voltage != new_data.battery_voltage ||
+                g_system_data.battery_percentage != new_data.battery_percentage ||
+                g_system_data.is_charging != new_data.is_charging ||
+                g_system_data.is_usb_connected != new_data.is_usb_connected ||
+                g_system_data.internal_temp != new_data.internal_temp ||
+                abs((int32_t)g_system_data.free_heap - (int32_t)new_data.free_heap) > 1024) {  // Heap change > 1KB
+                data_changed = true;
+            }
+        }
+        
+        // Update data and set flag only if data actually changed
+        memcpy(&g_system_data, &new_data, sizeof(system_data_t));
+        if (data_changed) {
+            g_data_updated = true;  // Set flag only when data actually changed
+            ESP_LOGD(TAG, "System data changed: Bat=%.2fV (%d%%), Temp=%.1f°C, Heap=%"PRIu32"KB", 
+                    new_data.battery_voltage, new_data.battery_percentage, 
+                    new_data.internal_temp, new_data.free_heap / 1024);
+        } else {
+            ESP_LOGV(TAG, "System data unchanged, skipping UI update flag");
+        }
+        
+        xSemaphoreGive(g_data_mutex);
     } else {
         ESP_LOGW(TAG, "Failed to acquire mutex for data update");
     }
@@ -124,6 +151,7 @@ esp_err_t system_monitor_init(void) {
     
     // Initialize system data
     memset(&g_system_data, 0, sizeof(system_data_t));
+    g_data_updated = false;  // Initialize data updated flag to false
     
     // Perform initial data update
     update_system_data();
@@ -206,6 +234,22 @@ esp_err_t system_monitor_update_now(void) {
     return ESP_OK;
 }
 
+bool system_monitor_is_data_updated(void) {
+    bool updated = false;
+    if (xSemaphoreTake(g_data_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        updated = g_data_updated;
+        xSemaphoreGive(g_data_mutex);
+    }
+    return updated;
+}
+
+void system_monitor_clear_updated_flag(void) {
+    if (xSemaphoreTake(g_data_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        g_data_updated = false;
+        xSemaphoreGive(g_data_mutex);
+    }
+}
+
 esp_err_t system_monitor_deinit(void) {
     ESP_LOGI(TAG, "Deinitializing system monitor");
     
@@ -220,6 +264,7 @@ esp_err_t system_monitor_deinit(void) {
     
     // Clear global data
     memset(&g_system_data, 0, sizeof(system_data_t));
+    g_data_updated = false;  // Reset data updated flag
     
     ESP_LOGI(TAG, "System monitor deinitialized");
     return ESP_OK;

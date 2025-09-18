@@ -586,25 +586,6 @@ static void axp192_monitor_task(void *pvParameters)
                 // 清理LED资源
                 ESP_LOGI(TAG, "🧹 清理LED资源");
                 red_led_deinit();
-                
-                // LVGL UI 系统演示 (提前到LED之后直接运行)
-                ESP_LOGI(TAG, "🖥️  开始LVGL UI系统演示");
-                // 重新开启显示屏用于UI演示
-                axp192_power_tft_display(true);      // 开启屏幕显示
-                axp192_power_tft_backlight(true);    // 开启屏幕背光
-                vTaskDelay(pdMS_TO_TICKS(500));       // 等待电源稳定
-                
-                // 初始化LVGL GUI
-                esp_err_t lvgl_ret = lvgl_init_with_m5stick_lcd();
-                if (lvgl_ret == ESP_OK) {
-                    ESP_LOGI(TAG, "🖥️  LVGL初始化成功");
-                    ESP_LOGI(TAG, "🎨 LVGL demo已运行 - 显示文本界面");
-                    
-                    // LVGL在后台运行，这里可以继续其他任务
-                    vTaskDelay(pdMS_TO_TICKS(5000));  // 显示5秒
-                } else {
-                    ESP_LOGE(TAG, "🎨 LVGL初始化失败: %s", esp_err_to_name(lvgl_ret));
-                }
 
             } else {
                 ESP_LOGE(TAG, "🔴 红色LED初始化失败: %s", esp_err_to_name(led_ret));
@@ -633,25 +614,6 @@ static void axp192_monitor_task(void *pvParameters)
                 
             } else {
                 ESP_LOGE(TAG, "🔘 按键驱动初始化失败: %s", esp_err_to_name(btn_ret));
-            }
-            
-            // 9. Simple UI 系统演示
-            ESP_LOGI(TAG, "🖥️  开始LVGL UI系统演示");
-            // 重新开启显示屏用于UI演示
-            axp192_power_tft_display(true);      // 开启屏幕显示
-            axp192_power_tft_backlight(true);    // 开启屏幕背光
-            vTaskDelay(pdMS_TO_TICKS(500));       // 等待电源稳定
-            
-            // 初始化LVGL GUI
-            esp_err_t lvgl_ret = lvgl_init_with_m5stick_lcd();
-            if (lvgl_ret == ESP_OK) {
-                ESP_LOGI(TAG, "🖥️  LVGL初始化成功");
-                ESP_LOGI(TAG, "🎨 LVGL demo已运行 - 显示文本界面");
-                
-                // LVGL在后台运行，这里可以继续其他任务
-                vTaskDelay(pdMS_TO_TICKS(5000));  // 显示5秒
-            } else {
-                ESP_LOGE(TAG, "🎨 LVGL初始化失败: %s", esp_err_to_name(lvgl_ret));
             }
             
             ESP_LOGI(TAG, "💤 关闭所有外设");

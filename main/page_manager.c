@@ -359,23 +359,22 @@ static void update_espnow_page(void)
     }
 }
 
-// Timer callback for page updates
+// Timer callback for page updates - optimized with data update flag
 static void page_update_timer_cb(lv_timer_t *timer)
 {
-    // Reduce update frequency during page transitions
-    static uint32_t update_counter = 0;
-    
     // Skip updates during page switches (when pending page is set)
     if (g_pending_page < PAGE_COUNT) {
         ESP_LOGD(TAG, "Skipping page update during page switch");
         return;
     }
     
-    // Only update every 2 seconds instead of every 1 second to reduce CPU load
-    if (++update_counter < 2) {
+    // Check if system data has been updated since last check
+    if (!system_monitor_is_data_updated()) {
+        ESP_LOGD(TAG, "No data update, skipping UI refresh");
         return;
     }
-    update_counter = 0;
+    
+    ESP_LOGD(TAG, "Data updated, refreshing UI");
     
     switch (g_current_page) {
         case PAGE_MONITOR:
@@ -387,6 +386,9 @@ static void page_update_timer_cb(lv_timer_t *timer)
         default:
             break;
     }
+    
+    // Clear the data updated flag after consuming the data
+    system_monitor_clear_updated_flag();
 }
 
 // Public API functions
@@ -409,8 +411,8 @@ esp_err_t page_manager_init(lv_display_t *display)
     // Load initial page using LVGL official pattern
     load_page(PAGE_MONITOR);
     
-    // Create update timer
-    g_update_timer = lv_timer_create(page_update_timer_cb, 1000, NULL);
+    // Create update timer with 500ms interval for responsive updates
+    g_update_timer = lv_timer_create(page_update_timer_cb, 500, NULL);
     if (!g_update_timer) {
         ESP_LOGE(TAG, "Failed to create update timer");
         return ESP_FAIL;

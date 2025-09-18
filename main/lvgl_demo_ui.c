@@ -1,7 +1,13 @@
 /*
- * System Monitor Display for M5StickC Plus 1.1 
+ * DEPRECATED: Old LVGL Demo UI for M5StickC Plus 1.1 
+ * This file contains the old single-screen demo UI implementation.
+ * It has been replaced by the new page manager system (page_manager_lvgl.c).
+ * Kept for reference only.
+ * 
  * Shows battery, temperature, and system information - LANDSCAPE MODE (240x135)
  */
+
+#if 0  // DEPRECATED - Old system, use page_manager_lvgl.c instead
 
 #include "lvgl.h"
 #include "esp_log.h"
@@ -194,3 +200,5 @@ void m5stick_lvgl_demo_ui(lv_display_t *disp)
     
     ESP_LOGI(TAG, "System monitor UI created successfully");
 }
+
+#endif  // DEPRECATED - Old system

@@ -14,16 +14,6 @@ extern "C" {
 #endif
 
 /**
- * @brief Initialize LVGL with M5StickC Plus LCD
- * 
- * This function initializes the LVGL library, sets up the LCD panel,
- * configures display drivers, and creates the demo UI.
- * 
- * @return ESP_OK on success, error code otherwise
- */
-esp_err_t lvgl_init_with_m5stick_lcd(void);
-
-/**
  * @brief Initialize LVGL with M5StickC Plus LCD (without demo UI)
  * 
  * This function initializes the LVGL library and sets up the LCD panel,

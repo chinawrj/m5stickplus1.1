@@ -79,6 +79,18 @@ const system_data_t* system_monitor_get_global_data(void);
 esp_err_t system_monitor_update_now(void);
 
 /**
+ * @brief Check if system data has been updated since last check
+ * @return true if data has been updated, false otherwise
+ */
+bool system_monitor_is_data_updated(void);
+
+/**
+ * @brief Clear the data updated flag
+ * This should be called after consuming the updated data
+ */
+void system_monitor_clear_updated_flag(void);
+
+/**
  * @brief Deinitialize system monitor
  * @return ESP_OK on success
  */
