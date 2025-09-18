@@ -37,7 +37,6 @@
 #include "lvgl_init.h"
 #include "system_monitor.h"
 #include "page_manager.h"
-#include "button_nav.h"
 #include "lvgl_button_input.h"
 #include "page_manager_lvgl.h"
 

@@ -2,7 +2,7 @@
 
 ## 概述 | Overview
 
-本项目已成功实现了将GPIO按键系统统一整合到LVGL框架中，实现了Button A/B到LVGL按键事件的无缝转换。
+本项目已成功实现了将GPIO按键系统统一整合到LVGL框架中，实现了Button## 📚 技术细节 | Technical Details无缝转换。
 
 This project has successfully implemented a unified integration of the GPIO button system into the LVGL framework, achieving seamless conversion from Button A/B to LVGL key events.
 
@@ -222,12 +222,9 @@ page_nav_key_event_cb()
 
 To use the new LVGL button system in your application:
 
-1. **替换初始化代码** | Replace initialization code:
+1. **初始化LVGL按键系统** | Initialize LVGL button system:
    ```c
-   // 旧方式 | Old way
-   button_nav_init();
-   
-   // 新方式 | New way  
+   // 新的统一方式 | New unified way  
    lvgl_button_input_init();
    page_manager_lvgl_init(display, input_device);
    ```
