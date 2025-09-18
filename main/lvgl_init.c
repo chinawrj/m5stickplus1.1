@@ -85,7 +85,21 @@ static void lvgl_port_task(void *arg)
         } else if (task_delay_ms < LVGL_TASK_MIN_DELAY_MS) {
             task_delay_ms = LVGL_TASK_MIN_DELAY_MS;
         }
+        
+        // Ensure IDLE task gets a chance to run and reset watchdog
+        // Force minimum delay to prevent task starvation
+        if (task_delay_ms < 10) {
+            task_delay_ms = 10;  // Minimum 10ms to ensure IDLE task runs
+        }
+        
         vTaskDelay(pdMS_TO_TICKS(task_delay_ms));
+        
+        // Additional safety: yield CPU every 100 iterations to prevent starvation
+        static uint32_t yield_counter = 0;
+        if (++yield_counter >= 100) {
+            yield_counter = 0;
+            taskYIELD();  // Explicitly yield to other tasks
+        }
     }
 }
 

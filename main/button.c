@@ -102,7 +102,7 @@ static void button_interrupt_task(void *pvParameters)
                     state->press_count++;
                     state->long_press_triggered = false;
                     
-                    ESP_LOGI(TAG, "%s pressed (interrupt)", button_get_name(event.button_id));
+                    ESP_LOGD(TAG, "%s pressed (interrupt)", button_get_name(event.button_id));
                     
                     if (interrupt_callback) {
                         interrupt_callback(event.button_id, BUTTON_EVENT_PRESSED, 0);
@@ -111,7 +111,7 @@ static void button_interrupt_task(void *pvParameters)
                     // Button released
                     state->press_duration = current_time - state->press_start_time;
                     
-                    ESP_LOGI(TAG, "%s released after %lums (interrupt)", 
+                    ESP_LOGD(TAG, "%s released after %lums (interrupt)", 
                              button_get_name(event.button_id), state->press_duration);
                     
                     if (interrupt_callback) {
@@ -186,8 +186,8 @@ esp_err_t button_init(void)
         }
     }
     
-    // Create interrupt processing task 
-    BaseType_t task_ret = xTaskCreate(button_interrupt_task, "button_intr", 2048, NULL, 5, NULL);
+    // Create interrupt processing task with increased stack size for LVGL callbacks and logging
+    BaseType_t task_ret = xTaskCreate(button_interrupt_task, "button_intr", 4096, NULL, 5, NULL);
     if (task_ret != pdPASS) {
         ESP_LOGE(TAG, "Failed to create interrupt task");
         button_deinit();

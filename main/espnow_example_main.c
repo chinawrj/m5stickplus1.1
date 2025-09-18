@@ -38,6 +38,8 @@
 #include "system_monitor.h"
 #include "page_manager.h"
 #include "button_nav.h"
+#include "lvgl_button_input.h"
+#include "page_manager_lvgl.h"
 
 #define ESPNOW_MAXDELAY 512
 
@@ -706,6 +708,40 @@ static void axp192_monitor_task(void *pvParameters)
     }
 }
 
+// Task monitoring function to help diagnose watchdog timeouts
+static void task_monitor_debug(void *pvParameters)
+{
+    ESP_LOGI(TAG, "Task monitor started for watchdog debugging");
+    
+    while (1) {
+        // Simplified task monitoring without requiring runtime stats
+        UBaseType_t task_count = uxTaskGetNumberOfTasks();
+        ESP_LOGI(TAG, "=== Task Monitor Report ===");
+        ESP_LOGI(TAG, "Total tasks: %lu", task_count);
+        ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
+        ESP_LOGI(TAG, "Minimum free heap: %lu bytes", esp_get_minimum_free_heap_size());
+        
+        // List currently running tasks on each core
+        TaskHandle_t task_handle_cpu0 = xTaskGetCurrentTaskHandleForCPU(0);
+        TaskHandle_t task_handle_cpu1 = xTaskGetCurrentTaskHandleForCPU(1);
+        
+        if (task_handle_cpu0) {
+            const char *task_name_cpu0 = pcTaskGetName(task_handle_cpu0);
+            ESP_LOGI(TAG, "CPU 0 current task: %s", task_name_cpu0 ? task_name_cpu0 : "Unknown");
+        }
+        
+        if (task_handle_cpu1) {
+            const char *task_name_cpu1 = pcTaskGetName(task_handle_cpu1);
+            ESP_LOGI(TAG, "CPU 1 current task: %s", task_name_cpu1 ? task_name_cpu1 : "Unknown");
+        }
+        
+        ESP_LOGI(TAG, "==========================");
+        
+        // Monitor every 10 seconds
+        vTaskDelay(pdMS_TO_TICKS(10000));
+    }
+}
+
 void app_main(void)
 {
     // Initialize NVS
@@ -774,22 +810,38 @@ void app_main(void)
         return;
     }
     
-    // Initialize page manager with display
-    ret = page_manager_init(disp);
+    // Initialize LVGL button input device (NEW SYSTEM)
+    ESP_LOGI(TAG, "🔘 Initializing LVGL button input device...");
+    ret = lvgl_button_input_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Page manager initialization failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "LVGL button input initialization failed: %s", esp_err_to_name(ret));
         return;
     }
-    ESP_LOGI(TAG, "📄 Page manager initialized successfully");
     
-    // Initialize button navigation
-    ret = button_nav_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Button navigation initialization failed: %s", esp_err_to_name(ret));
+    lv_indev_t *input_device = lvgl_button_input_get_device();
+    if (input_device == NULL) {
+        ESP_LOGE(TAG, "Failed to get LVGL input device handle");
         return;
     }
-    ESP_LOGI(TAG, "🔘 Button navigation initialized successfully");
-    ESP_LOGI(TAG, "🎨 Multi-page LVGL system ready - Use Button A/B to navigate");
+    ESP_LOGI(TAG, "✅ LVGL button input device initialized (A=OK, B=NEXT)");
+    
+    // Initialize LVGL-integrated page manager (NEW SYSTEM)
+    ESP_LOGI(TAG, "📄 Initializing LVGL-integrated page manager...");
+    ret = page_manager_lvgl_init(disp, input_device);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "LVGL page manager initialization failed: %s", esp_err_to_name(ret));
+        return;
+    }
+    ESP_LOGI(TAG, "✅ LVGL page manager initialized with key navigation");
+    ESP_LOGI(TAG, "");
+    ESP_LOGI(TAG, "🎨 LVGL Button System Ready!");
+    ESP_LOGI(TAG, "   • Button A (GPIO37): OK/ENTER action");
+    ESP_LOGI(TAG, "   • Button B (GPIO39): NEXT page navigation");
+    ESP_LOGI(TAG, "");
+
+    // Create task monitoring to help diagnose watchdog issues
+    ESP_LOGI(TAG, "🔍 Starting task monitor for watchdog debugging");
+    xTaskCreate(task_monitor_debug, "task_monitor", 2048, NULL, 1, NULL);
 
     // 可选：启动WiFi和ESP-NOW（如果需要网络功能）
     // example_wifi_init();

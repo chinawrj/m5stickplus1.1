@@ -173,7 +173,13 @@ static lv_timer_t *g_page_switch_timer = NULL;
 static void page_switch_timer_cb(lv_timer_t *timer)
 {
     if (g_pending_page >= PAGE_COUNT) {
-        return; // No pending page switch
+        // No pending page switch - delete timer to prevent unnecessary runs
+        if (g_page_switch_timer) {
+            lv_timer_delete(g_page_switch_timer);
+            g_page_switch_timer = NULL;
+            ESP_LOGD(TAG, "Page switch timer cleaned up (no pending page)");
+        }
+        return;
     }
     
     page_id_t target_page = g_pending_page;
@@ -198,6 +204,11 @@ static void page_switch_timer_cb(lv_timer_t *timer)
             break;
         default:
             ESP_LOGE(TAG, "Unknown page ID: %d", target_page);
+            // Clean up timer on error
+            if (g_page_switch_timer) {
+                lv_timer_delete(g_page_switch_timer);
+                g_page_switch_timer = NULL;
+            }
             return;
     }
     
@@ -206,6 +217,13 @@ static void page_switch_timer_cb(lv_timer_t *timer)
         ESP_LOGI(TAG, "Page %d loaded successfully in LVGL timer", target_page);
     } else {
         ESP_LOGE(TAG, "Failed to create page %d", target_page);
+    }
+    
+    // Clean up timer after successful page switch
+    if (g_page_switch_timer) {
+        lv_timer_delete(g_page_switch_timer);
+        g_page_switch_timer = NULL;
+        ESP_LOGD(TAG, "Page switch timer cleaned up after successful switch");
     }
 }
 
@@ -218,7 +236,7 @@ static void load_page(page_id_t page_id)
     // Set pending page switch
     g_pending_page = page_id;
     
-    // Ensure timer exists for page switching
+    // Create a one-shot timer for page switching if one doesn't exist
     if (!g_page_switch_timer) {
         g_page_switch_timer = lv_timer_create(page_switch_timer_cb, 1, NULL);
         if (!g_page_switch_timer) {
@@ -226,7 +244,9 @@ static void load_page(page_id_t page_id)
             g_pending_page = PAGE_COUNT;
             return;
         }
-        lv_timer_set_repeat_count(g_page_switch_timer, -1); // Infinite repeat
+        // Set to run only once, not infinite repeat
+        lv_timer_set_repeat_count(g_page_switch_timer, 1);
+        ESP_LOGD(TAG, "Created one-shot page switch timer");
     }
     
     // Trigger immediate execution of timer
@@ -342,6 +362,21 @@ static void update_espnow_page(void)
 // Timer callback for page updates
 static void page_update_timer_cb(lv_timer_t *timer)
 {
+    // Reduce update frequency during page transitions
+    static uint32_t update_counter = 0;
+    
+    // Skip updates during page switches (when pending page is set)
+    if (g_pending_page < PAGE_COUNT) {
+        ESP_LOGD(TAG, "Skipping page update during page switch");
+        return;
+    }
+    
+    // Only update every 2 seconds instead of every 1 second to reduce CPU load
+    if (++update_counter < 2) {
+        return;
+    }
+    update_counter = 0;
+    
     switch (g_current_page) {
         case PAGE_MONITOR:
             update_monitor_page();

@@ -10,5 +10,5 @@
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32"
   },
-  "idf.flashType": "JTAG"
+  "idf.flashType": "UART"
 }
