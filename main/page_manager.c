@@ -46,6 +46,16 @@ static void format_uptime_string(char *buffer, size_t buffer_size)
     snprintf(buffer, buffer_size, "%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32, hours, minutes, seconds);
 }
 
+// Helper function to format free memory as "XXX KB" string
+static void format_free_memory_string(char *buffer, size_t buffer_size)
+{
+    // Get current free heap memory directly
+    uint32_t free_heap_bytes = esp_get_free_heap_size();
+    uint32_t free_heap_kb = free_heap_bytes / 1024;  // Convert to KB
+    
+    snprintf(buffer, buffer_size, "%"PRIu32" KB", free_heap_kb);
+}
+
 // Helper function to get WiFi MAC address as formatted string
 static esp_err_t get_wifi_mac_string(char *mac_str, size_t mac_str_size)
 {
@@ -128,6 +138,20 @@ static esp_err_t create_monitor_page(void)
     lv_obj_set_style_text_opa(uptime_label, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_pos(uptime_label, 5, 120);
     
+    // Free memory at bottom-right, display current available memory
+    lv_obj_t *memory_label = lv_label_create(scr);
+    
+    // Get current free memory directly
+    char memory_text[16];
+    format_free_memory_string(memory_text, sizeof(memory_text));
+    
+    lv_label_set_text(memory_label, memory_text);
+    lv_obj_set_style_text_color(memory_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(memory_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    // Ensure solid color rendering
+    lv_obj_set_style_text_opa(memory_label, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_pos(memory_label, 170, 120);  // Right-aligned position
+    
     ESP_LOGI(TAG, "Monitor page created successfully");
     return ESP_OK;
 }
@@ -199,6 +223,20 @@ static esp_err_t create_espnow_page(void)
     // Ensure solid color rendering
     lv_obj_set_style_text_opa(uptime_label, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_pos(uptime_label, 5, 120);
+    
+    // Free memory at bottom-right, display current available memory
+    lv_obj_t *memory_label = lv_label_create(scr);
+    
+    // Get current free memory directly
+    char memory_text[16];
+    format_free_memory_string(memory_text, sizeof(memory_text));
+    
+    lv_label_set_text(memory_label, memory_text);
+    lv_obj_set_style_text_color(memory_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(memory_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    // Ensure solid color rendering
+    lv_obj_set_style_text_opa(memory_label, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_pos(memory_label, 170, 120);  // Right-aligned position
     
     ESP_LOGI(TAG, "ESP-NOW page created successfully");
     return ESP_OK;
@@ -318,6 +356,11 @@ static void update_monitor_page(void)
                 char uptime_text[16];
                 format_uptime_string(uptime_text, sizeof(uptime_text));
                 lv_label_set_text(child, uptime_text);
+            } else if (y_pos == 120 && x_pos > 150) {
+                // Memory label (right side) - show current free memory
+                char memory_text[16];
+                format_free_memory_string(memory_text, sizeof(memory_text));
+                lv_label_set_text(child, memory_text);
             }
         }
     }
@@ -365,6 +408,12 @@ static void update_espnow_page(void)
                 char uptime_text[16];
                 format_uptime_string(uptime_text, sizeof(uptime_text));
                 lv_label_set_text(child, uptime_text);
+            }
+            // Update memory label (right side) - show current free memory
+            else if (y_pos == 120 && x_pos > 150) {
+                char memory_text[16];
+                format_free_memory_string(memory_text, sizeof(memory_text));
+                lv_label_set_text(child, memory_text);
             }
         }
     }
