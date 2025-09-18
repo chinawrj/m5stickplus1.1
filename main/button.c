@@ -186,7 +186,7 @@ esp_err_t button_init(void)
         }
     }
     
-    // Create interrupt processing task
+    // Create interrupt processing task 
     BaseType_t task_ret = xTaskCreate(button_interrupt_task, "button_intr", 2048, NULL, 5, NULL);
     if (task_ret != pdPASS) {
         ESP_LOGE(TAG, "Failed to create interrupt task");

@@ -36,6 +36,8 @@
 #include "button.h"
 #include "lvgl_init.h"
 #include "system_monitor.h"
+#include "page_manager.h"
+#include "button_nav.h"
 
 #define ESPNOW_MAXDELAY 512
 
@@ -740,22 +742,54 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "System monitor started successfully");
 
-    // 直接启动LVGL演示
-    ESP_LOGI(TAG, "🖥️  开始LVGL UI系统演示");
-    
-    // 开启显示屏电源
-    axp192_power_tft_display(true);      // 开启屏幕显示
-    axp192_power_tft_backlight(true);    // 开启屏幕背光
-    vTaskDelay(pdMS_TO_TICKS(500));       // 等待电源稳定
-    
-    // 初始化LVGL GUI
-    esp_err_t lvgl_ret = lvgl_init_with_m5stick_lcd();
-    if (lvgl_ret == ESP_OK) {
-        ESP_LOGI(TAG, "🖥️  LVGL初始化成功");
-        ESP_LOGI(TAG, "🎨 LVGL demo已运行 - 显示文本界面");
-    } else {
-        ESP_LOGE(TAG, "🎨 LVGL初始化失败: %s", esp_err_to_name(lvgl_ret));
+    // Initialize button driver
+    ESP_LOGI(TAG, "🔘 Initializing button driver");
+    ret = button_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Button driver initialization failed: %s", esp_err_to_name(ret));
+        return;
     }
+    ESP_LOGI(TAG, "Button driver initialized successfully");
+
+    // Initialize multi-page LVGL system
+    ESP_LOGI(TAG, "🖥️  Initializing LVGL multi-page system");
+    
+    // Power on display
+    axp192_power_tft_display(true);      // Enable TFT display
+    axp192_power_tft_backlight(true);    // Enable TFT backlight
+    vTaskDelay(pdMS_TO_TICKS(500));       // Wait for power stabilization
+    
+    // Initialize LVGL base system without demo UI for multi-page application
+    esp_err_t lvgl_ret = lvgl_init_base();
+    if (lvgl_ret != ESP_OK) {
+        ESP_LOGE(TAG, "🎨 LVGL initialization failed: %s", esp_err_to_name(lvgl_ret));
+        return;
+    }
+    ESP_LOGI(TAG, "🖥️  LVGL base system initialized successfully");
+    
+    // Get default display for page manager
+    lv_display_t *disp = lv_display_get_default();
+    if (disp == NULL) {
+        ESP_LOGE(TAG, "Failed to get LVGL display handle");
+        return;
+    }
+    
+    // Initialize page manager with display
+    ret = page_manager_init(disp);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Page manager initialization failed: %s", esp_err_to_name(ret));
+        return;
+    }
+    ESP_LOGI(TAG, "📄 Page manager initialized successfully");
+    
+    // Initialize button navigation
+    ret = button_nav_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Button navigation initialization failed: %s", esp_err_to_name(ret));
+        return;
+    }
+    ESP_LOGI(TAG, "🔘 Button navigation initialized successfully");
+    ESP_LOGI(TAG, "🎨 Multi-page LVGL system ready - Use Button A/B to navigate");
 
     // 可选：启动WiFi和ESP-NOW（如果需要网络功能）
     // example_wifi_init();
