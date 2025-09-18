@@ -10,10 +10,14 @@
 #include "axp192.h"
 #include "esp_wifi.h"
 #include "esp_mac.h"
+#include "esp_timer.h"
 #include <string.h>
 #include <inttypes.h>
 
 static const char *TAG = "PAGE_MANAGER";
+
+// Page manager startup time for uptime calculation
+// static int64_t g_startup_time_us = 0;  // Removed: use system uptime directly
 
 // LVGL Official Pattern: Single Screen + Clean Approach
 // Based on lvgl/demos/benchmark pattern for stability
@@ -28,6 +32,19 @@ static esp_err_t create_espnow_page(void);
 static void update_monitor_page(void);
 static void update_espnow_page(void);
 static void load_page(page_id_t page_id);
+
+// Helper function to format uptime as HH:MM:SS string
+static void format_uptime_string(char *buffer, size_t buffer_size)
+{
+    // Get system uptime directly in microseconds, then convert to seconds
+    int64_t uptime_us = esp_timer_get_time();
+    uint32_t uptime_sec = (uint32_t)(uptime_us / 1000000);
+    
+    uint32_t hours = uptime_sec / 3600;
+    uint32_t minutes = (uptime_sec % 3600) / 60;
+    uint32_t seconds = uptime_sec % 60;
+    snprintf(buffer, buffer_size, "%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32, hours, minutes, seconds);
+}
 
 // Helper function to get WiFi MAC address as formatted string
 static esp_err_t get_wifi_mac_string(char *mac_str, size_t mac_str_size)
@@ -97,20 +114,12 @@ static esp_err_t create_monitor_page(void)
     lv_obj_set_style_text_font(status_label, &lv_font_montserrat_18, LV_PART_MAIN);
     lv_obj_set_pos(status_label, 10, 96);
 
-    // Uptime at bottom-left, display real current time instead of placeholder
+    // Uptime at bottom-left, display current uptime from page manager
     lv_obj_t *uptime_label = lv_label_create(scr);
     
-    // Get current system data to display real uptime immediately
-    system_data_t sys_data;
-    char uptime_text[16] = "00:00:00"; // fallback if data not available
-    esp_err_t ret = system_monitor_get_data(&sys_data);
-    if (ret == ESP_OK && sys_data.data_valid) {
-        uint32_t uptime_sec = sys_data.uptime_seconds;
-        uint32_t hours = uptime_sec / 3600;
-        uint32_t minutes = (uptime_sec % 3600) / 60;
-        uint32_t seconds = uptime_sec % 60;
-        snprintf(uptime_text, sizeof(uptime_text), "%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32, hours, minutes, seconds);
-    }
+    // Get current uptime directly from page manager
+    char uptime_text[16];
+    format_uptime_string(uptime_text, sizeof(uptime_text));
     
     lv_label_set_text(uptime_label, uptime_text);
     lv_obj_set_style_text_color(uptime_label, lv_color_white(), LV_PART_MAIN);
@@ -177,20 +186,12 @@ static esp_err_t create_espnow_page(void)
     lv_obj_set_style_bg_color(signal_bar, lv_color_white(), LV_PART_INDICATOR);
     lv_bar_set_value(signal_bar, 75, LV_ANIM_OFF);
     
-    // Uptime at bottom-left, display real current time instead of placeholder
+    // Uptime at bottom-left, display current uptime from page manager
     lv_obj_t *uptime_label = lv_label_create(scr);
     
-    // Get current system data to display real uptime immediately
-    system_data_t sys_data;
-    char uptime_text[16] = "00:00:00"; // fallback if data not available
-    esp_err_t ret = system_monitor_get_data(&sys_data);
-    if (ret == ESP_OK && sys_data.data_valid) {
-        uint32_t uptime_sec = sys_data.uptime_seconds;
-        uint32_t hours = uptime_sec / 3600;
-        uint32_t minutes = (uptime_sec % 3600) / 60;
-        uint32_t seconds = uptime_sec % 60;
-        snprintf(uptime_text, sizeof(uptime_text), "%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32, hours, minutes, seconds);
-    }
+    // Get current uptime directly from page manager
+    char uptime_text[16];
+    format_uptime_string(uptime_text, sizeof(uptime_text));
     
     lv_label_set_text(uptime_label, uptime_text);
     lv_obj_set_style_text_color(uptime_label, lv_color_white(), LV_PART_MAIN);
@@ -313,13 +314,9 @@ static void update_monitor_page(void)
                 }
                 lv_label_set_text(child, status_text);
             } else if (y_pos == 120 && x_pos < 60) {
-                // Uptime label (hh:mm:ss only)
+                // Uptime label (hh:mm:ss only) - use page manager's uptime
                 char uptime_text[16];
-                uint32_t uptime_sec = sys_data.uptime_seconds;
-                uint32_t hours = uptime_sec / 3600;
-                uint32_t minutes = (uptime_sec % 3600) / 60;
-                uint32_t seconds = uptime_sec % 60;
-                snprintf(uptime_text, sizeof(uptime_text), "%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32, hours, minutes, seconds);
+                format_uptime_string(uptime_text, sizeof(uptime_text));
                 lv_label_set_text(child, uptime_text);
             }
         }
@@ -335,13 +332,6 @@ static void update_espnow_page(void)
     
     lv_obj_t *scr = lv_screen_active();
     if (!scr) return;
-    
-    // Get system data for uptime
-    system_data_t sys_data;
-    esp_err_t ret = system_monitor_get_data(&sys_data);
-    if (ret != ESP_OK || !sys_data.data_valid) {
-        return;
-    }
     
     uint32_t child_count = lv_obj_get_child_count(scr);
     bool mac_label_found = false;
@@ -370,14 +360,10 @@ static void update_espnow_page(void)
                 lv_label_set_text(child, mac_str);
                 mac_label_found = true;
             }
-            // Update uptime label (same position as Monitor page)
+            // Update uptime label (same position as Monitor page) - use page manager's uptime
             else if (y_pos == 120 && x_pos < 60) {
                 char uptime_text[16];
-                uint32_t uptime_sec = sys_data.uptime_seconds;
-                uint32_t hours = uptime_sec / 3600;
-                uint32_t minutes = (uptime_sec % 3600) / 60;
-                uint32_t seconds = uptime_sec % 60;
-                snprintf(uptime_text, sizeof(uptime_text), "%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32, hours, minutes, seconds);
+                format_uptime_string(uptime_text, sizeof(uptime_text));
                 lv_label_set_text(child, uptime_text);
             }
         }
@@ -422,6 +408,9 @@ esp_err_t page_manager_init(lv_display_t *display)
         ESP_LOGE(TAG, "Invalid display parameter");
         return ESP_ERR_INVALID_ARG;
     }
+    
+    // Note: Now using system uptime directly, no need to track initialization time
+    ESP_LOGI(TAG, "Page manager initialized - using system uptime for display");
     
     g_main_screen = lv_screen_active();
     if (!g_main_screen) {
