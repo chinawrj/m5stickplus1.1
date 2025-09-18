@@ -321,16 +321,6 @@ lvgl_key_t lvgl_button_input_get_last_key(void)
     return g_last_key;
 }
 
-void lvgl_button_input_get_stats(uint32_t *button_a_count, uint32_t *button_b_count)
-{
-    if (button_a_count) {
-        *button_a_count = g_button_a_count;
-    }
-    if (button_b_count) {
-        *button_b_count = g_button_b_count;
-    }
-}
-
 esp_err_t lvgl_button_input_deinit(void)
 {
     ESP_LOGI(TAG, "Deinitializing LVGL button input device...");

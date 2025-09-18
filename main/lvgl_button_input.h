@@ -88,14 +88,6 @@ bool lvgl_button_input_is_event_driven(void);
 lvgl_key_t lvgl_button_input_get_last_key(void);
 
 /**
- * @brief Get button press statistics (for debugging)
- * 
- * @param button_a_count Number of Button A presses since init
- * @param button_b_count Number of Button B presses since init
- */
-void lvgl_button_input_get_stats(uint32_t *button_a_count, uint32_t *button_b_count);
-
-/**
  * @brief Deinitialize LVGL input device driver
  * 
  * Cleans up the input device registration and resources.
