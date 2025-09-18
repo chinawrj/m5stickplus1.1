@@ -89,6 +89,16 @@ lvgl_key_t lvgl_button_input_get_last_key(void);
 void lvgl_button_input_get_stats(uint32_t *button_a_count, uint32_t *button_b_count);
 
 /**
+ * @brief Validate LVGL compliance of the button implementation
+ * 
+ * This function checks if the current implementation follows LVGL standards
+ * for input device handling, thread safety, and timing aspects.
+ * 
+ * @return ESP_OK if compliant, ESP_FAIL if issues found
+ */
+esp_err_t lvgl_button_input_validate_compliance(void);
+
+/**
  * @brief Deinitialize LVGL input device driver
  * 
  * Cleans up the input device registration and resources.

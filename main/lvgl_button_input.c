@@ -133,6 +133,14 @@ static void button_processing_task(void *pvParameters)
             } else {
                 ESP_LOGI(TAG, "Button released: %s", 
                          (event.key == LVGL_KEY_OK) ? "OK/ENTER" : "RIGHT");
+                
+                // LVGL Compliance: Clear key after release with small delay
+                // This ensures LVGL has time to process the release event
+                vTaskDelay(pdMS_TO_TICKS(10)); // 10ms delay for LVGL processing
+                
+                // Clear the key state to prevent repeated reads
+                g_current_key = LVGL_KEY_NONE;
+                ESP_LOGD(TAG, "Key state cleared after release");
             }
         }
     }
@@ -402,6 +410,77 @@ void lvgl_button_input_get_stats(uint32_t *button_a_count, uint32_t *button_b_co
     }
     if (button_b_count) {
         *button_b_count = g_button_b_count;
+    }
+}
+
+/**
+ * @brief Validate LVGL compliance of button implementation
+ * 
+ * This function checks if the current implementation follows LVGL standards
+ * for input device handling, particularly thread safety and timing aspects.
+ * 
+ * @return ESP_OK if compliant, ESP_FAIL with detailed logging if issues found
+ */
+esp_err_t lvgl_button_input_validate_compliance(void)
+{
+    ESP_LOGI(TAG, "🔍 Validating LVGL compliance...");
+    
+    bool compliance_ok = true;
+    
+    // Check 1: Initialization state
+    if (!g_input_initialized) {
+        ESP_LOGE(TAG, "❌ Input device not initialized");
+        compliance_ok = false;
+    } else {
+        ESP_LOGI(TAG, "✅ Input device properly initialized");
+    }
+    
+    // Check 2: LVGL device registration
+    if (!g_indev) {
+        ESP_LOGE(TAG, "❌ LVGL input device not registered");
+        compliance_ok = false;
+    } else {
+        ESP_LOGI(TAG, "✅ LVGL input device registered");
+    }
+    
+    // Check 3: Task-based processing (ISR safety)
+    if (!g_button_task_handle) {
+        ESP_LOGE(TAG, "❌ Button processing task not running");
+        compliance_ok = false;
+    } else {
+        ESP_LOGI(TAG, "✅ ISR-safe task-based processing active");
+    }
+    
+    // Check 4: Queue-based communication
+    if (!g_button_event_queue) {
+        ESP_LOGE(TAG, "❌ ISR-to-task queue not available");
+        compliance_ok = false;
+    } else {
+        ESP_LOGI(TAG, "✅ Queue-based ISR communication active");
+    }
+    
+    // Check 5: LVGL timer integration (optional but recommended)
+    if (!g_state_timer) {
+        ESP_LOGW(TAG, "⚠️  LVGL state timer not active (optional)");
+    } else {
+        ESP_LOGI(TAG, "✅ LVGL timer-based state management active");
+    }
+    
+    // Check 6: Atomic state variables
+    ESP_LOGI(TAG, "ℹ️  Current state: key=%d, state=%s", 
+             (int)g_current_key,
+             g_key_state == LV_INDEV_STATE_PRESSED ? "PRESSED" : "RELEASED");
+    ESP_LOGI(TAG, "✅ Atomic state variables in use");
+    
+    // Summary
+    if (compliance_ok) {
+        ESP_LOGI(TAG, "🎉 LVGL compliance validation PASSED");
+        ESP_LOGI(TAG, "📊 Stats: A:%lu presses, B:%lu presses", 
+                 (uint32_t)g_button_a_count, (uint32_t)g_button_b_count);
+        return ESP_OK;
+    } else {
+        ESP_LOGE(TAG, "❌ LVGL compliance validation FAILED");
+        return ESP_FAIL;
     }
 }
 

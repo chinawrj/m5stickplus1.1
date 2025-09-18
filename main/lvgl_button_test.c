@@ -95,6 +95,14 @@ static esp_err_t test_lvgl_input_device(lvgl_button_test_result_t *result)
         return ESP_FAIL;
     }
     
+    // Test LVGL compliance validation
+    ret = lvgl_button_input_validate_compliance();
+    if (ret != ESP_OK) {
+        set_test_error(result, "LVGL compliance validation failed");
+        ESP_LOGE(TAG, "LVGL compliance validation failed");
+        return ret;
+    }
+    
     // Test input device enable/disable
     lvgl_button_input_set_enabled(false);
     if (lvgl_button_input_is_enabled()) {
