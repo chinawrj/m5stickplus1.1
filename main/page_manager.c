@@ -8,6 +8,8 @@
 #include "esp_log.h"
 #include "system_monitor.h"
 #include "axp192.h"
+#include "esp_wifi.h"
+#include "esp_mac.h"
 #include <string.h>
 #include <inttypes.h>
 
@@ -26,6 +28,24 @@ static esp_err_t create_espnow_page(void);
 static void update_monitor_page(void);
 static void update_espnow_page(void);
 static void load_page(page_id_t page_id);
+
+// Helper function to get WiFi MAC address as formatted string
+static esp_err_t get_wifi_mac_string(char *mac_str, size_t mac_str_size)
+{
+    uint8_t mac_addr[6];
+    esp_err_t ret = esp_read_mac(mac_addr, ESP_MAC_WIFI_STA);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read WiFi MAC address: %s", esp_err_to_name(ret));
+        snprintf(mac_str, mac_str_size, "MAC: Error");
+        return ret;
+    }
+    
+    // Format as MAC: XX:XX:XX:XX:XX:XX
+    snprintf(mac_str, mac_str_size, "MAC: %02X:%02X:%02X:%02X:%02X:%02X", 
+             mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+    
+    return ESP_OK;
+}
 
 // Page factory functions that create content directly on active screen
 // Following LVGL official examples pattern
@@ -46,13 +66,6 @@ static esp_err_t create_monitor_page(void)
     lv_obj_set_style_text_color(title, lv_color_hex(0x00FFFF), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(title, 60, 5);
-    
-    // Navigation hint
-    lv_obj_t *nav_hint = lv_label_create(scr);
-    lv_label_set_text(nav_hint, "A:Next B:Prev");
-    lv_obj_set_style_text_color(nav_hint, lv_color_hex(0x666666), LV_PART_MAIN);
-    lv_obj_set_style_text_font(nav_hint, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_pos(nav_hint, 150, 120);
     
     // Battery: voltage and current on one line
     lv_obj_t *battery_label = lv_label_create(scr);
@@ -84,9 +97,22 @@ static esp_err_t create_monitor_page(void)
     lv_obj_set_style_text_font(status_label, &lv_font_montserrat_18, LV_PART_MAIN);
     lv_obj_set_pos(status_label, 10, 96);
 
-    // Uptime at bottom-left, only hh:mm:ss, use same font size as navigation (14)
+    // Uptime at bottom-left, display real current time instead of placeholder
     lv_obj_t *uptime_label = lv_label_create(scr);
-    lv_label_set_text(uptime_label, "00:00:00");
+    
+    // Get current system data to display real uptime immediately
+    system_data_t sys_data;
+    char uptime_text[16] = "00:00:00"; // fallback if data not available
+    esp_err_t ret = system_monitor_get_data(&sys_data);
+    if (ret == ESP_OK && sys_data.data_valid) {
+        uint32_t uptime_sec = sys_data.uptime_seconds;
+        uint32_t hours = uptime_sec / 3600;
+        uint32_t minutes = (uptime_sec % 3600) / 60;
+        uint32_t seconds = uptime_sec % 60;
+        snprintf(uptime_text, sizeof(uptime_text), "%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32, hours, minutes, seconds);
+    }
+    
+    lv_label_set_text(uptime_label, uptime_text);
     lv_obj_set_style_text_color(uptime_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(uptime_label, &lv_font_montserrat_14, LV_PART_MAIN);
     // Ensure solid color rendering
@@ -117,41 +143,31 @@ static esp_err_t create_espnow_page(void)
     lv_obj_set_style_text_font(title, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(title, 60, 5);
     
-    // Navigation hint
-    lv_obj_t *nav_hint = lv_label_create(scr);
-    lv_label_set_text(nav_hint, "A:Next B:Prev");
-    // Match Monitor page nav hint color (gray)
-    lv_obj_set_style_text_color(nav_hint, lv_color_hex(0x666666), LV_PART_MAIN);
-    lv_obj_set_style_text_font(nav_hint, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_pos(nav_hint, 150, 120);
-    
-    // ESP-NOW status
-    lv_obj_t *status_label = lv_label_create(scr);
-    lv_label_set_text(status_label, "Status: Ready");
-    lv_obj_set_style_text_color(status_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_pos(status_label, 10, 30);
-    
-    // MAC Address display
+    // MAC Address display (moved up to replace status)
     lv_obj_t *mac_label = lv_label_create(scr);
-    lv_label_set_text(mac_label, "MAC: --:--:--:--:--:--");
+    
+    // Get real MAC address
+    char mac_str[32];
+    get_wifi_mac_string(mac_str, sizeof(mac_str));
+    lv_label_set_text(mac_label, mac_str);
+    
     lv_obj_set_style_text_color(mac_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(mac_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_pos(mac_label, 10, 52);
+    lv_obj_set_pos(mac_label, 10, 30);
     
-    // Send counter
+    // Send counter (moved up)
     lv_obj_t *send_label = lv_label_create(scr);
     lv_label_set_text(send_label, "Sent: 0 packets");
     lv_obj_set_style_text_color(send_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(send_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_pos(send_label, 10, 74);
+    lv_obj_set_pos(send_label, 10, 52);
     
-    // Receive counter
+    // Receive counter (moved up)
     lv_obj_t *recv_label = lv_label_create(scr);
     lv_label_set_text(recv_label, "Received: 0 packets");
     lv_obj_set_style_text_color(recv_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(recv_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_pos(recv_label, 10, 96);
+    lv_obj_set_pos(recv_label, 10, 74);
     
     // Signal strength indicator
     lv_obj_t *signal_bar = lv_bar_create(scr);
@@ -160,6 +176,28 @@ static esp_err_t create_espnow_page(void)
     lv_obj_set_style_bg_color(signal_bar, lv_color_hex(0x333333), LV_PART_MAIN);
     lv_obj_set_style_bg_color(signal_bar, lv_color_white(), LV_PART_INDICATOR);
     lv_bar_set_value(signal_bar, 75, LV_ANIM_OFF);
+    
+    // Uptime at bottom-left, display real current time instead of placeholder
+    lv_obj_t *uptime_label = lv_label_create(scr);
+    
+    // Get current system data to display real uptime immediately
+    system_data_t sys_data;
+    char uptime_text[16] = "00:00:00"; // fallback if data not available
+    esp_err_t ret = system_monitor_get_data(&sys_data);
+    if (ret == ESP_OK && sys_data.data_valid) {
+        uint32_t uptime_sec = sys_data.uptime_seconds;
+        uint32_t hours = uptime_sec / 3600;
+        uint32_t minutes = (uptime_sec % 3600) / 60;
+        uint32_t seconds = uptime_sec % 60;
+        snprintf(uptime_text, sizeof(uptime_text), "%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32, hours, minutes, seconds);
+    }
+    
+    lv_label_set_text(uptime_label, uptime_text);
+    lv_obj_set_style_text_color(uptime_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(uptime_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    // Ensure solid color rendering
+    lv_obj_set_style_text_opa(uptime_label, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_pos(uptime_label, 5, 120);
     
     ESP_LOGI(TAG, "ESP-NOW page created successfully");
     return ESP_OK;
@@ -341,20 +379,53 @@ static void update_espnow_page(void)
         return;
     }
     
-    // ESP-NOW page update logic here
-    // For now, just refresh signal bar
     lv_obj_t *scr = lv_screen_active();
     if (!scr) return;
     
+    // Get system data for uptime
+    system_data_t sys_data;
+    esp_err_t ret = system_monitor_get_data(&sys_data);
+    if (ret != ESP_OK || !sys_data.data_valid) {
+        return;
+    }
+    
     uint32_t child_count = lv_obj_get_child_count(scr);
+    bool mac_label_found = false;
+    
     for (uint32_t i = 0; i < child_count; i++) {
         lv_obj_t *child = lv_obj_get_child(scr, i);
-        if (child && lv_obj_check_type(child, &lv_bar_class)) {
-            // Update signal strength (example)
+        if (!child) continue;
+        
+        // Update signal strength bar
+        if (lv_obj_check_type(child, &lv_bar_class)) {
             static int signal_value = 75;
             signal_value = (signal_value + 5) % 100;
             lv_bar_set_value(child, signal_value, LV_ANIM_OFF);
-            break;
+        }
+        
+        // Update labels based on position and content
+        if (lv_obj_check_type(child, &lv_label_class)) {
+            int32_t y_pos = lv_obj_get_y(child);
+            int32_t x_pos = lv_obj_get_x(child);
+            const char *text = lv_label_get_text(child);
+            
+            // Update MAC address label
+            if (!mac_label_found && text && strncmp(text, "MAC:", 4) == 0) {
+                char mac_str[32];
+                get_wifi_mac_string(mac_str, sizeof(mac_str));
+                lv_label_set_text(child, mac_str);
+                mac_label_found = true;
+            }
+            // Update uptime label (same position as Monitor page)
+            else if (y_pos == 120 && x_pos < 60) {
+                char uptime_text[16];
+                uint32_t uptime_sec = sys_data.uptime_seconds;
+                uint32_t hours = uptime_sec / 3600;
+                uint32_t minutes = (uptime_sec % 3600) / 60;
+                uint32_t seconds = uptime_sec % 60;
+                snprintf(uptime_text, sizeof(uptime_text), "%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32, hours, minutes, seconds);
+                lv_label_set_text(child, uptime_text);
+            }
         }
     }
 }
