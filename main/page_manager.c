@@ -203,27 +203,19 @@ static esp_err_t create_espnow_page(void)
     return ESP_OK;
 }
 
-// LVGL task-safe page switching using timer (LVGL official pattern)
-static page_id_t g_pending_page = PAGE_COUNT; // PAGE_COUNT means no pending switch
-static lv_timer_t *g_page_switch_timer = NULL;
+// Monitor page update function
 
-// LVGL timer callback for page switching (thread-safe)
-static void page_switch_timer_cb(lv_timer_t *timer)
+// LVGL Official Pattern: Thread-safe page switching using timer
+// Based on LVGL timer mechanism for thread safety
+static void load_page(page_id_t page_id)
 {
-    if (g_pending_page >= PAGE_COUNT) {
-        // No pending page switch - delete timer to prevent unnecessary runs
-        if (g_page_switch_timer) {
-            lv_timer_delete(g_page_switch_timer);
-            g_page_switch_timer = NULL;
-            ESP_LOGD(TAG, "Page switch timer cleaned up (no pending page)");
-        }
+    ESP_LOGI(TAG, "Direct page switch to %d (no timer needed - already in LVGL task)", page_id);
+    
+    // Validate page ID
+    if (page_id >= PAGE_COUNT) {
+        ESP_LOGE(TAG, "Invalid page ID: %d", page_id);
         return;
     }
-    
-    page_id_t target_page = g_pending_page;
-    g_pending_page = PAGE_COUNT; // Clear pending flag
-    
-    ESP_LOGI(TAG, "Executing page switch to %d in LVGL timer context", target_page);
     
     // Get the active screen - LVGL official pattern
     lv_obj_t *scr = lv_screen_active();
@@ -233,7 +225,7 @@ static void page_switch_timer_cb(lv_timer_t *timer)
     
     // Create content based on page ID
     esp_err_t ret = ESP_FAIL;
-    switch (target_page) {
+    switch (page_id) {
         case PAGE_MONITOR:
             ret = create_monitor_page();
             break;
@@ -241,54 +233,16 @@ static void page_switch_timer_cb(lv_timer_t *timer)
             ret = create_espnow_page();
             break;
         default:
-            ESP_LOGE(TAG, "Unknown page ID: %d", target_page);
-            // Clean up timer on error
-            if (g_page_switch_timer) {
-                lv_timer_delete(g_page_switch_timer);
-                g_page_switch_timer = NULL;
-            }
+            ESP_LOGE(TAG, "Unknown page ID: %d", page_id);
             return;
     }
     
     if (ret == ESP_OK) {
-        g_current_page = target_page;
-        ESP_LOGI(TAG, "Page %d loaded successfully in LVGL timer", target_page);
+        g_current_page = page_id;
+        ESP_LOGI(TAG, "Page %d loaded successfully (direct switch)", page_id);
     } else {
-        ESP_LOGE(TAG, "Failed to create page %d", target_page);
+        ESP_LOGE(TAG, "Failed to create page %d", page_id);
     }
-    
-    // Clean up timer after successful page switch
-    if (g_page_switch_timer) {
-        lv_timer_delete(g_page_switch_timer);
-        g_page_switch_timer = NULL;
-        ESP_LOGD(TAG, "Page switch timer cleaned up after successful switch");
-    }
-}
-
-// LVGL Official Pattern: Thread-safe page switching using timer
-// Based on LVGL timer mechanism for thread safety
-static void load_page(page_id_t page_id)
-{
-    ESP_LOGI(TAG, "Scheduling page switch to %d using LVGL timer (thread-safe)...", page_id);
-    
-    // Set pending page switch
-    g_pending_page = page_id;
-    
-    // Create a one-shot timer for page switching if one doesn't exist
-    if (!g_page_switch_timer) {
-        g_page_switch_timer = lv_timer_create(page_switch_timer_cb, 1, NULL);
-        if (!g_page_switch_timer) {
-            ESP_LOGE(TAG, "Failed to create page switch timer");
-            g_pending_page = PAGE_COUNT;
-            return;
-        }
-        // Set to run only once, not infinite repeat
-        lv_timer_set_repeat_count(g_page_switch_timer, 1);
-        ESP_LOGD(TAG, "Created one-shot page switch timer");
-    }
-    
-    // Trigger immediate execution of timer
-    lv_timer_ready(g_page_switch_timer);
 }
 
 // Monitor page update function
@@ -433,11 +387,7 @@ static void update_espnow_page(void)
 // Timer callback for page updates - optimized with data update flag
 static void page_update_timer_cb(lv_timer_t *timer)
 {
-    // Skip updates during page switches (when pending page is set)
-    if (g_pending_page < PAGE_COUNT) {
-        ESP_LOGD(TAG, "Skipping page update during page switch");
-        return;
-    }
+    // Note: No need to check for pending page switches anymore since we use direct switching
     
     // Check if system data has been updated since last check
     if (!system_monitor_is_data_updated()) {
@@ -581,11 +531,6 @@ esp_err_t page_manager_deinit(void)
         g_update_timer = NULL;
     }
     
-    if (g_page_switch_timer) {
-        lv_timer_delete(g_page_switch_timer);
-        g_page_switch_timer = NULL;
-    }
-    
     // Clean the active screen - LVGL official pattern
     if (g_main_screen) {
         lv_obj_clean(g_main_screen);
@@ -594,7 +539,6 @@ esp_err_t page_manager_deinit(void)
     g_main_screen = NULL;
     g_current_page = PAGE_MONITOR;
     g_navigation_enabled = true;
-    g_pending_page = PAGE_COUNT;
     
     ESP_LOGI(TAG, "Page manager deinitialized");
     return ESP_OK;
