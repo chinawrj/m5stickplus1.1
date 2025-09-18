@@ -165,10 +165,6 @@ I (12803) PAGE_MGR_LVGL: Successfully navigated to page: ESP-NOW
 // 获取按键统计 | Get button statistics
 uint32_t button_a_count, button_b_count;
 lvgl_button_input_get_stats(&button_a_count, &button_b_count);
-
-// 获取导航统计 | Get navigation statistics  
-uint32_t key_nav_count, manual_nav_count;
-page_manager_lvgl_get_nav_stats(&key_nav_count, &manual_nav_count);
 ```
 
 ## 📚 技术细节 | Technical Details

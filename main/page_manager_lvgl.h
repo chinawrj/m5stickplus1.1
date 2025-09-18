@@ -86,14 +86,6 @@ esp_err_t page_manager_lvgl_next(void);
 esp_err_t page_manager_lvgl_prev(void);
 
 /**
- * @brief Get navigation statistics for debugging
- * 
- * @param key_nav_count Number of key-based navigations
- * @param manual_nav_count Number of manual navigations
- */
-void page_manager_lvgl_get_nav_stats(uint32_t *key_nav_count, uint32_t *manual_nav_count);
-
-/**
  * @brief Manual key event handler as fallback
  * 
  * This function is called directly from input device when LVGL's

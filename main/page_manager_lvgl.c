@@ -22,11 +22,6 @@ static bool g_key_events_enabled = true;
 static lv_group_t *g_nav_group = NULL;
 static lv_indev_t *g_input_device = NULL;
 
-// Navigation statistics
-static uint32_t g_key_nav_count = 0;
-static uint32_t g_manual_nav_count = 0;
-static SemaphoreHandle_t g_stats_mutex = NULL;
-
 /**
  * @brief Screen-level key event handler (兜底处理器)
  * 
@@ -58,12 +53,6 @@ static void screen_key_event_cb(lv_event_t *e)
     
     if (key == LV_KEY_RIGHT) {
         ESP_LOGI(TAG, "🚀 Screen RIGHT key - navigating to next page");
-        
-        // Update statistics (thread-safe)
-        if (g_stats_mutex && xSemaphoreTake(g_stats_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-            g_key_nav_count++;
-            xSemaphoreGive(g_stats_mutex);
-        }
         
         esp_err_t ret = page_manager_lvgl_next();
         if (ret == ESP_OK) {
@@ -104,14 +93,6 @@ esp_err_t page_manager_lvgl_init(lv_display_t *display, lv_indev_t *indev)
         return ret;
     }
     
-    // Create statistics mutex
-    g_stats_mutex = xSemaphoreCreateMutex();
-    if (g_stats_mutex == NULL) {
-        ESP_LOGE(TAG, "Failed to create statistics mutex");
-        page_manager_deinit();
-        return ESP_ERR_NO_MEM;
-    }
-    
     // Store input device reference
     g_input_device = indev;
     
@@ -119,8 +100,6 @@ esp_err_t page_manager_lvgl_init(lv_display_t *display, lv_indev_t *indev)
     g_nav_group = lv_group_create();
     if (g_nav_group == NULL) {
         ESP_LOGE(TAG, "Failed to create LVGL navigation group");
-        vSemaphoreDelete(g_stats_mutex);
-        g_stats_mutex = NULL;
         page_manager_deinit();
         return ESP_ERR_NO_MEM;
     }
@@ -134,8 +113,6 @@ esp_err_t page_manager_lvgl_init(lv_display_t *display, lv_indev_t *indev)
         ESP_LOGE(TAG, "No active screen found");
         lv_group_delete(g_nav_group);
         g_nav_group = NULL;
-        vSemaphoreDelete(g_stats_mutex);
-        g_stats_mutex = NULL;
         page_manager_deinit();
         return ESP_FAIL;
     }
@@ -150,8 +127,6 @@ esp_err_t page_manager_lvgl_init(lv_display_t *display, lv_indev_t *indev)
     
     // Initialize state
     g_key_events_enabled = true;
-    g_key_nav_count = 0;
-    g_manual_nav_count = 0;
     
     g_lvgl_page_manager_initialized = true;
     
@@ -181,46 +156,14 @@ lv_group_t* page_manager_lvgl_get_group(void)
 
 esp_err_t page_manager_lvgl_next(void)
 {
-    // Update manual navigation statistics
-    if (g_stats_mutex && xSemaphoreTake(g_stats_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        g_manual_nav_count++;
-        xSemaphoreGive(g_stats_mutex);
-    }
-    
     ESP_LOGI(TAG, "Manual navigation to next page");
     return page_manager_next();
 }
 
 esp_err_t page_manager_lvgl_prev(void)
 {
-    // Update manual navigation statistics
-    if (g_stats_mutex && xSemaphoreTake(g_stats_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        g_manual_nav_count++;
-        xSemaphoreGive(g_stats_mutex);
-    }
-    
     ESP_LOGI(TAG, "Manual navigation to previous page");
     return page_manager_prev();
-}
-
-void page_manager_lvgl_get_nav_stats(uint32_t *key_nav_count, uint32_t *manual_nav_count)
-{
-    if (g_stats_mutex && xSemaphoreTake(g_stats_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        if (key_nav_count) {
-            *key_nav_count = g_key_nav_count;
-        }
-        if (manual_nav_count) {
-            *manual_nav_count = g_manual_nav_count;
-        }
-        xSemaphoreGive(g_stats_mutex);
-    } else {
-        if (key_nav_count) {
-            *key_nav_count = 0;
-        }
-        if (manual_nav_count) {
-            *manual_nav_count = 0;
-        }
-    }
 }
 
 /**
@@ -249,12 +192,6 @@ esp_err_t page_manager_lvgl_deinit(void)
     if (g_nav_group) {
         lv_group_delete(g_nav_group);
         g_nav_group = NULL;
-    }
-    
-    // Clean up statistics mutex
-    if (g_stats_mutex) {
-        vSemaphoreDelete(g_stats_mutex);
-        g_stats_mutex = NULL;
     }
     
     // Deinitialize base page manager
