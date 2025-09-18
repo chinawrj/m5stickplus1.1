@@ -315,11 +315,12 @@ esp_err_t axp192_get_battery_discharge_current(float *discharge_current)
 bool axp192_is_charging(void)
 {
     uint8_t status;
-    esp_err_t ret = axp192_read_byte(AXP192_POWER_STATUS, &status);
+    esp_err_t ret = axp192_read_byte(AXP192_CHARGE_STATUS, &status);  // 0x01 充电状态寄存器
     if (ret != ESP_OK) {
         return false;
     }
-    return (status & 0x04) != 0;  // bit2: 充电状态指示
+    // bit6: 正在充电状态指示 (1=充电中, 0=未充电)
+    return (status & 0x40) != 0;
 }
 
 /**

@@ -7,6 +7,7 @@
 #include "page_manager.h"
 #include "esp_log.h"
 #include "system_monitor.h"
+#include "axp192.h"
 #include <string.h>
 #include <inttypes.h>
 
@@ -53,21 +54,21 @@ static esp_err_t create_monitor_page(void)
     lv_obj_set_style_text_font(nav_hint, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(nav_hint, 150, 120);
     
-    // Battery info
+    // Battery: voltage and current on one line
     lv_obj_t *battery_label = lv_label_create(scr);
-    lv_label_set_text(battery_label, "Battery: --%");
+    lv_label_set_text(battery_label, "Bat: -.--V ---mA");
     lv_obj_set_style_text_color(battery_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(battery_label, &lv_font_montserrat_18, LV_PART_MAIN);
     lv_obj_set_pos(battery_label, 10, 30);
     
-    // Voltage info
-    lv_obj_t *voltage_label = lv_label_create(scr);
-    lv_label_set_text(voltage_label, "Voltage: -.--V");
-    lv_obj_set_style_text_color(voltage_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(voltage_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_pos(voltage_label, 10, 52);
+    // USB: voltage and current on one line
+    lv_obj_t *usb_label = lv_label_create(scr);
+    lv_label_set_text(usb_label, "USB: -.--V ---mA");
+    lv_obj_set_style_text_color(usb_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(usb_label, &lv_font_montserrat_18, LV_PART_MAIN);
+    lv_obj_set_pos(usb_label, 10, 52);
     
-    // Temperature info - Use white for debugging
+    // Temperature info
     lv_obj_t *temp_label = lv_label_create(scr);
     lv_label_set_text(temp_label, "Temp: --.-°C");
     lv_obj_set_style_text_color(temp_label, lv_color_white(), LV_PART_MAIN);
@@ -76,14 +77,21 @@ static esp_err_t create_monitor_page(void)
     lv_obj_set_style_text_opa(temp_label, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_pos(temp_label, 10, 74);
     
-    // Uptime info - Use white for debugging
+    // USB connection status
+    lv_obj_t *status_label = lv_label_create(scr);
+    lv_label_set_text(status_label, "Power Source: USB");
+    lv_obj_set_style_text_color(status_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_18, LV_PART_MAIN);
+    lv_obj_set_pos(status_label, 10, 96);
+
+    // Uptime at bottom-left, only hh:mm:ss, use same font size as navigation (14)
     lv_obj_t *uptime_label = lv_label_create(scr);
-    lv_label_set_text(uptime_label, "Uptime: 00:00:00");
+    lv_label_set_text(uptime_label, "00:00:00");
     lv_obj_set_style_text_color(uptime_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(uptime_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    // Disable text antialiasing to prevent pixel color bleeding
+    lv_obj_set_style_text_font(uptime_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    // Ensure solid color rendering
     lv_obj_set_style_text_opa(uptime_label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_pos(uptime_label, 10, 96);
+    lv_obj_set_pos(uptime_label, 5, 120);
     
     ESP_LOGI(TAG, "Monitor page created successfully");
     return ESP_OK;
@@ -249,31 +257,57 @@ static void update_monitor_page(void)
         lv_obj_t *child = lv_obj_get_child(scr, i);
         if (child && lv_obj_check_type(child, &lv_label_class)) {
             int32_t y_pos = lv_obj_get_y(child);
+            int32_t x_pos = lv_obj_get_x(child);
             
             // Update labels based on their Y position
             if (y_pos == 30) {
-                // Battery label
-                char battery_text[32];
-                snprintf(battery_text, sizeof(battery_text), "Battery: %d%%", (int)sys_data.battery_percentage);
+                // Battery: voltage and current combined with charging status
+                char battery_text[64];
+                float ibat = 0.0f;
+                if (sys_data.is_charging) {
+                    ibat = sys_data.charge_current;    // mA
+                } else {
+                    ibat = -sys_data.discharge_current; // mA (negative for discharge)
+                }
+                const char* charge_indicator = sys_data.is_charging ? " CHG" : "";
+                snprintf(battery_text, sizeof(battery_text), "Bat: %.2fV %+.0fmA%s", 
+                         sys_data.battery_voltage, ibat, charge_indicator);
                 lv_label_set_text(child, battery_text);
             } else if (y_pos == 52) {
-                // Voltage label
-                char voltage_text[32];
-                snprintf(voltage_text, sizeof(voltage_text), "Voltage: %.2fV", sys_data.battery_voltage);
-                lv_label_set_text(child, voltage_text);
+                // USB: voltage and current combined
+                char usb_text[64];
+                float vbus_voltage = sys_data.vbus_voltage;
+                // Get USB current using safe_read_float helper
+                float vbus_current = 0.0f;
+                esp_err_t ret = axp192_get_vbus_current(&vbus_current);
+                if (ret != ESP_OK) {
+                    vbus_current = 0.0f;
+                }
+                snprintf(usb_text, sizeof(usb_text), "USB: %.2fV %.0fmA", 
+                         vbus_voltage, vbus_current);
+                lv_label_set_text(child, usb_text);
             } else if (y_pos == 74) {
                 // Temperature label
                 char temp_text[32];
                 snprintf(temp_text, sizeof(temp_text), "Temp: %.1f°C", sys_data.internal_temp);
                 lv_label_set_text(child, temp_text);
             } else if (y_pos == 96) {
-                // Uptime label
-                char uptime_text[32];
+                // Power Source: USB connection status
+                char status_text[64];
+                if (sys_data.is_usb_connected) {
+                    snprintf(status_text, sizeof(status_text), "Power Source: USB");
+                } else {
+                    snprintf(status_text, sizeof(status_text), "Power Source: Battery");
+                }
+                lv_label_set_text(child, status_text);
+            } else if (y_pos == 120 && x_pos < 60) {
+                // Uptime label (hh:mm:ss only)
+                char uptime_text[16];
                 uint32_t uptime_sec = sys_data.uptime_seconds;
                 uint32_t hours = uptime_sec / 3600;
                 uint32_t minutes = (uptime_sec % 3600) / 60;
                 uint32_t seconds = uptime_sec % 60;
-                snprintf(uptime_text, sizeof(uptime_text), "Uptime: %02" PRIu32 ":%02" PRIu32 ":%02" PRIu32, hours, minutes, seconds);
+                snprintf(uptime_text, sizeof(uptime_text), "%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32, hours, minutes, seconds);
                 lv_label_set_text(child, uptime_text);
             }
         }
