@@ -110,21 +110,21 @@ esp_err_t page_manager_init(lv_display_t *display)
     // Initialize page modules
     ESP_LOGI(TAG, "Initializing page modules...");
     
-    esp_err_t ret = monitor_page_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize monitor page module: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    
-    ret = espnow_page_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize ESP-NOW page module: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    
-    // Register page controllers
+    // Register page controllers first
     g_page_controllers[PAGE_MONITOR] = get_monitor_page_controller();
     g_page_controllers[PAGE_ESPNOW] = get_espnow_page_controller();
+    
+    // Initialize each page module through its controller
+    for (int i = 0; i < PAGE_COUNT; i++) {
+        if (g_page_controllers[i] && g_page_controllers[i]->init) {
+            esp_err_t ret = g_page_controllers[i]->init();
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to initialize %s page module: %s", 
+                         g_page_controllers[i]->name, esp_err_to_name(ret));
+                return ret;
+            }
+        }
+    }
     
     ESP_LOGI(TAG, "Page controllers registered successfully");
     

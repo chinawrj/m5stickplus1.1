@@ -5,7 +5,7 @@
 #include "esp_mac.h"
 #include "lvgl.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
+#include <stdatomic.h>
 #include <inttypes.h>
 
 static const char *TAG = "ESPNOW_PAGE";
@@ -19,8 +19,7 @@ static lv_obj_t *g_espnow_recv_label = NULL;
 static lv_obj_t *g_espnow_signal_bar = NULL;
 
 // ESP-NOW data state management
-static bool g_espnow_data_updated = false;
-static SemaphoreHandle_t g_espnow_data_mutex = NULL;
+static atomic_bool g_espnow_data_updated = ATOMIC_VAR_INIT(false);
 
 // ESP-NOW statistics (simulated for now)
 static uint32_t g_packets_sent = 0;
@@ -75,6 +74,7 @@ static esp_err_t destroy_espnow_page_ui(void);
 
 // Page controller interface implementation
 static const page_controller_t espnow_controller = {
+    .init = espnow_page_init,
     .create = espnow_page_create,
     .update = espnow_page_update,
     .destroy = espnow_page_destroy,
@@ -92,13 +92,6 @@ esp_err_t espnow_page_init(void)
 {
     ESP_LOGI(TAG, "Initializing ESP-NOW page module");
     
-    // Create mutex for data update flag
-    g_espnow_data_mutex = xSemaphoreCreateMutex();
-    if (g_espnow_data_mutex == NULL) {
-        ESP_LOGE(TAG, "Failed to create data mutex");
-        return ESP_ERR_NO_MEM;
-    }
-    
     // Reset UI object pointers
     g_espnow_uptime_label = NULL;
     g_espnow_memory_label = NULL;
@@ -107,8 +100,8 @@ esp_err_t espnow_page_init(void)
     g_espnow_recv_label = NULL;
     g_espnow_signal_bar = NULL;
     
-    // Reset data state
-    g_espnow_data_updated = false;
+    // Reset data state - atomic variable doesn't need explicit initialization
+    atomic_store(&g_espnow_data_updated, false);
     
     ESP_LOGI(TAG, "ESP-NOW page module initialized");
     return ESP_OK;
@@ -158,22 +151,14 @@ esp_err_t espnow_page_destroy(void)
 
 bool espnow_page_is_data_updated(void)
 {
-    bool updated = false;
-    if (xSemaphoreTake(g_espnow_data_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        updated = g_espnow_data_updated;
-        // Atomically clear the flag to avoid race conditions
-        g_espnow_data_updated = false;
-        xSemaphoreGive(g_espnow_data_mutex);
-    }
-    return updated;
+    // Atomic exchange: get current value and set to false in one operation
+    return atomic_exchange(&g_espnow_data_updated, false);
 }
 
 void espnow_page_notify_data_update(void)
 {
-    if (xSemaphoreTake(g_espnow_data_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        g_espnow_data_updated = true;
-        xSemaphoreGive(g_espnow_data_mutex);
-    }
+    // Atomic store: thread-safe assignment
+    atomic_store(&g_espnow_data_updated, true);
 }
 
 // Internal UI creation function

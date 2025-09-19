@@ -27,6 +27,7 @@ typedef enum {
  */
 typedef struct {
     // Page lifecycle functions
+    esp_err_t (*init)(void);            // Initialize page module (called once)
     esp_err_t (*create)(void);          // Create page UI elements
     esp_err_t (*update)(void);          // Update page data display
     esp_err_t (*destroy)(void);         // Clean up page resources

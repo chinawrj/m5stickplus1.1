@@ -47,6 +47,7 @@ static esp_err_t destroy_monitor_page_ui(void);
 
 // Page controller interface implementation
 static const page_controller_t monitor_controller = {
+    .init = monitor_page_init,
     .create = monitor_page_create,
     .update = monitor_page_update, 
     .destroy = monitor_page_destroy,
