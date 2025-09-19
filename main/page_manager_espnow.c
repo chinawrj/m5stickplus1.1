@@ -24,6 +24,12 @@ static atomic_bool g_espnow_data_updated = ATOMIC_VAR_INIT(false);
 // Real ESP-NOW statistics from manager
 static espnow_stats_t g_espnow_stats = {0};
 
+// Previous state for change detection
+static uint32_t g_prev_uptime_sec = 0;      // Previous uptime in seconds
+static uint32_t g_prev_free_heap_kb = 0;    // Previous free heap in KB
+static uint32_t g_prev_packets_sent = 0;    // Previous sent packets count
+static uint32_t g_prev_packets_received = 0; // Previous received packets count
+
 // Helper function to get WiFi MAC address as formatted string
 static esp_err_t get_wifi_mac_string(char *mac_str, size_t mac_str_size)
 {
@@ -107,6 +113,21 @@ static esp_err_t espnow_page_init(void)
     // Reset data state - atomic variable doesn't need explicit initialization
     atomic_store(&g_espnow_data_updated, false);
     
+    // Initialize previous state tracking variables
+    int64_t uptime_us = esp_timer_get_time();
+    g_prev_uptime_sec = (uint32_t)(uptime_us / 1000000);
+    g_prev_free_heap_kb = esp_get_free_heap_size() / 1024;
+    
+    // Initialize previous ESP-NOW statistics
+    espnow_stats_t current_stats = {0};
+    if (espnow_manager_get_stats(&current_stats) == ESP_OK) {
+        g_prev_packets_sent = current_stats.packets_sent;
+        g_prev_packets_received = current_stats.packets_received;
+    } else {
+        g_prev_packets_sent = 0;
+        g_prev_packets_received = 0;
+    }
+    
     ESP_LOGI(TAG, "ESP-NOW page module initialized");
     return ESP_OK;
 }
@@ -155,8 +176,52 @@ static esp_err_t espnow_page_destroy(void)
 
 static bool espnow_page_is_data_updated(void)
 {
-    // Atomic exchange: get current value and set to false in one operation
-    return atomic_exchange(&g_espnow_data_updated, false);
+    bool data_changed = false;
+    
+    // Check if ESP-NOW statistics notification was triggered
+    bool stats_notified = atomic_exchange(&g_espnow_data_updated, false);
+    if (stats_notified) {
+        data_changed = true;
+    }
+    
+    // Get current data for comparison
+    // 1. Current uptime in seconds
+    int64_t uptime_us = esp_timer_get_time();
+    uint32_t current_uptime_sec = (uint32_t)(uptime_us / 1000000);
+    
+    // 2. Current free heap in KB
+    uint32_t current_free_heap_kb = esp_get_free_heap_size() / 1024;
+    
+    // 3. Current ESP-NOW statistics
+    espnow_stats_t current_stats = {0};
+    espnow_manager_get_stats(&current_stats);
+    
+    // Compare with previous values to detect changes
+    
+    // Check uptime change (second-level precision)
+    if (current_uptime_sec != g_prev_uptime_sec) {
+        g_prev_uptime_sec = current_uptime_sec;
+        data_changed = true;
+    }
+    
+    // Check free heap change (KB-level precision)
+    if (current_free_heap_kb != g_prev_free_heap_kb) {
+        g_prev_free_heap_kb = current_free_heap_kb;
+        data_changed = true;
+    }
+    
+    // Check ESP-NOW statistics changes
+    if (current_stats.packets_sent != g_prev_packets_sent) {
+        g_prev_packets_sent = current_stats.packets_sent;
+        data_changed = true;
+    }
+    
+    if (current_stats.packets_received != g_prev_packets_received) {
+        g_prev_packets_received = current_stats.packets_received;
+        data_changed = true;
+    }
+    
+    return data_changed;
 }
 
 void espnow_page_notify_data_update(void)

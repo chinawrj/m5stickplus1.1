@@ -363,6 +363,9 @@ static void espnow_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *
     
     // Update statistics
     s_stats.packets_received++;
+    
+    // Notify ESP-NOW page of receive statistics update
+    espnow_page_notify_data_update();
 }
 
 // Data parsing (official example)
@@ -555,6 +558,9 @@ static void espnow_recv_only_task(void *pvParameter)
                 } else {
                     s_stats.send_failed++;
                 }
+                
+                // Notify ESP-NOW page of send statistics update
+                espnow_page_notify_data_update();
                 
                 ESP_LOGD(TAG, "📤 Send callback: "MACSTR", status: %d", 
                          MAC2STR(send_cb->mac_addr), send_cb->status);
