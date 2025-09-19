@@ -39,3 +39,4 @@ managed_components/
 # Cache files
 .cache/
 *.cache
+cscope*
