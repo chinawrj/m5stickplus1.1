@@ -8,39 +8,66 @@
 #include <stdint.h>
 
 // UX Service Configuration
-#define UX_SERVICE_QUEUE_SIZE           10
+#define UX_SERVICE_QUEUE_SIZE           20
 #define UX_SERVICE_TASK_STACK_SIZE      4096
 #define UX_SERVICE_TASK_PRIORITY        5
 #define UX_SERVICE_TASK_NAME            "ux_service_task"
 
 /**
- * @brief UX Effect Types
+ * @brief UX Device Types
  */
 typedef enum {
-    UX_EFFECT_NONE = 0,
-    
-    // LED Effects (Maximum 5)
-    UX_LED_OFF,                         // Turn LED off
-    UX_LED_ON,                          // Turn LED on
-    UX_LED_BLINK_FAST,                  // Fast blink pattern
-    UX_LED_BREATHING,                   // Breathing effect
-    UX_LED_SUCCESS_PATTERN,             // Success indication pattern
-    
-    // Buzzer Effects (Maximum 5)
-    UX_BUZZER_SILENCE,                  // Stop buzzer
-    UX_BUZZER_STARTUP,                  // Startup melody
-    UX_BUZZER_SUCCESS,                  // Success melody
-    UX_BUZZER_ERROR,                    // Error melody
-    UX_BUZZER_NOTIFICATION,             // Notification beep
-    
-    UX_EFFECT_MAX
-} ux_effect_type_t;
+    UX_DEVICE_NONE = 0,
+    UX_DEVICE_LED,                      // Red LED on GPIO10
+    UX_DEVICE_BUZZER,                   // Buzzer on GPIO2
+    UX_DEVICE_MAX
+} ux_device_type_t;
+
+/**
+ * @brief LED Effect Types
+ */
+typedef enum {
+    UX_LED_EFFECT_OFF = 0,              // Turn LED off
+    UX_LED_EFFECT_ON,                   // Turn LED on
+    UX_LED_EFFECT_BLINK_FAST,           // Fast blink pattern
+    UX_LED_EFFECT_BLINK_SLOW,           // Slow blink pattern
+    UX_LED_EFFECT_BREATHING,            // Breathing effect
+    UX_LED_EFFECT_SUCCESS_PATTERN,      // Success indication pattern
+    UX_LED_EFFECT_ERROR_PATTERN,        // Error indication pattern
+    UX_LED_EFFECT_MAX
+} ux_led_effect_type_t;
+
+/**
+ * @brief Buzzer Effect Types
+ */
+typedef enum {
+    UX_BUZZER_EFFECT_SILENCE = 0,       // Stop buzzer
+    UX_BUZZER_EFFECT_STARTUP,           // Startup melody
+    UX_BUZZER_EFFECT_SUCCESS,           // Success melody
+    UX_BUZZER_EFFECT_ERROR,             // Error melody
+    UX_BUZZER_EFFECT_NOTIFICATION,      // Notification beep
+    UX_BUZZER_EFFECT_WARNING,           // Warning tone
+    UX_BUZZER_EFFECT_CLICK,             // Button click sound
+    UX_BUZZER_EFFECT_MAX
+} ux_buzzer_effect_type_t;
+
+/**
+ * @brief Composite UX Effect Structure
+ */
+typedef struct {
+    ux_device_type_t device_type;       // Device type (LED or BUZZER)
+    union {
+        ux_led_effect_type_t led_effect;        // LED effect type
+        ux_buzzer_effect_type_t buzzer_effect;  // Buzzer effect type
+        uint32_t effect_id;                     // Generic effect ID
+    };
+} ux_effect_t;
 
 /**
  * @brief UX Message Structure
  */
 typedef struct {
-    ux_effect_type_t effect_type;       // Type of effect to execute
+    ux_effect_t effect;                 // Composite effect specification
     uint32_t duration_ms;               // Duration for the effect (0 = default)
     uint32_t repeat_count;              // Number of repetitions (0 = default/single)
     uint32_t parameter;                 // Additional parameter (frequency, interval, etc.)
@@ -81,13 +108,13 @@ esp_err_t ux_service_deinit(void);
  * 
  * Sends a message to the UX service queue for processing.
  * 
- * @param effect_type Type of effect to execute
+ * @param effect Composite effect specification
  * @param duration_ms Duration in milliseconds (0 = use default)
  * @param repeat_count Number of repetitions (0 = use default)
  * @param parameter Additional parameter (frequency, interval, etc.)
  * @return esp_err_t ESP_OK on success, ESP_ERR_TIMEOUT if queue full
  */
-esp_err_t ux_service_send_effect(ux_effect_type_t effect_type, 
+esp_err_t ux_service_send_effect(ux_effect_t effect, 
                                   uint32_t duration_ms,
                                   uint32_t repeat_count,
                                   uint32_t parameter);
@@ -97,10 +124,10 @@ esp_err_t ux_service_send_effect(ux_effect_type_t effect_type,
  * 
  * Simplified version with default parameters.
  * 
- * @param effect_type Type of effect to execute
+ * @param effect Composite effect specification
  * @return esp_err_t ESP_OK on success, ESP_ERR_TIMEOUT if queue full
  */
-esp_err_t ux_service_send_simple_effect(ux_effect_type_t effect_type);
+esp_err_t ux_service_send_simple_effect(ux_effect_t effect);
 
 /**
  * @brief Get UX Service Statistics
@@ -118,6 +145,26 @@ esp_err_t ux_service_get_stats(ux_service_stats_t *stats);
  * @return bool true if service is running, false otherwise
  */
 bool ux_service_is_running(void);
+
+/**
+ * @brief Helper Macros for Creating UX Effects
+ */
+#define UX_LED_EFFECT(led_effect_type) \
+    ((ux_effect_t){.device_type = UX_DEVICE_LED, .led_effect = (led_effect_type)})
+
+#define UX_BUZZER_EFFECT(buzzer_effect_type) \
+    ((ux_effect_t){.device_type = UX_DEVICE_BUZZER, .buzzer_effect = (buzzer_effect_type)})
+
+/**
+ * @brief Helper Functions for Creating Common Effects
+ */
+static inline ux_effect_t ux_create_led_effect(ux_led_effect_type_t led_effect) {
+    return (ux_effect_t){.device_type = UX_DEVICE_LED, .led_effect = led_effect};
+}
+
+static inline ux_effect_t ux_create_buzzer_effect(ux_buzzer_effect_type_t buzzer_effect) {
+    return (ux_effect_t){.device_type = UX_DEVICE_BUZZER, .buzzer_effect = buzzer_effect};
+}
 
 /**
  * @brief LED Effect Convenience Functions

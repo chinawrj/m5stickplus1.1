@@ -27,9 +27,10 @@ static bool demo_completed = false;
 
 // Forward declarations
 static void ux_service_task(void *pvParameters);
-static esp_err_t ux_execute_led_effect(ux_effect_type_t effect_type, uint32_t duration_ms, uint32_t repeat_count, uint32_t parameter);
-static esp_err_t ux_execute_buzzer_effect(ux_effect_type_t effect_type, uint32_t duration_ms, uint32_t repeat_count, uint32_t parameter);
-static const char* ux_effect_type_to_string(ux_effect_type_t effect_type);
+static void ux_queue_startup_demo_effects(void);
+static esp_err_t ux_execute_led_effect(ux_led_effect_type_t effect_type, uint32_t duration_ms, uint32_t repeat_count, uint32_t parameter);
+static esp_err_t ux_execute_buzzer_effect(ux_buzzer_effect_type_t effect_type, uint32_t duration_ms, uint32_t repeat_count, uint32_t parameter);
+static const char* ux_effect_to_string(ux_effect_t effect);
 
 // Hardware initialization functions
 static esp_err_t ux_init_led(void);
@@ -138,7 +139,7 @@ esp_err_t ux_service_deinit(void)
     return ESP_OK;
 }
 
-esp_err_t ux_service_send_effect(ux_effect_type_t effect_type, 
+esp_err_t ux_service_send_effect(ux_effect_t effect, 
                                   uint32_t duration_ms,
                                   uint32_t repeat_count,
                                   uint32_t parameter)
@@ -149,7 +150,7 @@ esp_err_t ux_service_send_effect(ux_effect_type_t effect_type,
     }
     
     ux_message_t message = {
-        .effect_type = effect_type,
+        .effect = effect,
         .duration_ms = duration_ms,
         .repeat_count = repeat_count,
         .parameter = parameter
@@ -165,9 +166,9 @@ esp_err_t ux_service_send_effect(ux_effect_type_t effect_type,
     return ESP_OK;
 }
 
-esp_err_t ux_service_send_simple_effect(ux_effect_type_t effect_type)
+esp_err_t ux_service_send_simple_effect(ux_effect_t effect)
 {
-    return ux_service_send_effect(effect_type, 0, 0, 0);
+    return ux_service_send_effect(effect, 0, 0, 0);
 }
 
 esp_err_t ux_service_get_stats(ux_service_stats_t *stats)
@@ -188,53 +189,53 @@ bool ux_service_is_running(void)
 // LED Convenience Functions
 esp_err_t ux_led_off(void)
 {
-    return ux_service_send_simple_effect(UX_LED_OFF);
+    return ux_service_send_simple_effect(UX_LED_EFFECT(UX_LED_EFFECT_OFF));
 }
 
 esp_err_t ux_led_on(void)
 {
-    return ux_service_send_simple_effect(UX_LED_ON);
+    return ux_service_send_simple_effect(UX_LED_EFFECT(UX_LED_EFFECT_ON));
 }
 
 esp_err_t ux_led_blink_fast(uint32_t duration_ms)
 {
-    return ux_service_send_effect(UX_LED_BLINK_FAST, duration_ms, 0, 0);
+    return ux_service_send_effect(UX_LED_EFFECT(UX_LED_EFFECT_BLINK_FAST), duration_ms, 0, 0);
 }
 
 esp_err_t ux_led_breathing(uint32_t cycles)
 {
-    return ux_service_send_effect(UX_LED_BREATHING, 0, cycles, 0);
+    return ux_service_send_effect(UX_LED_EFFECT(UX_LED_EFFECT_BREATHING), 0, cycles, 0);
 }
 
 esp_err_t ux_led_success_pattern(void)
 {
-    return ux_service_send_simple_effect(UX_LED_SUCCESS_PATTERN);
+    return ux_service_send_simple_effect(UX_LED_EFFECT(UX_LED_EFFECT_SUCCESS_PATTERN));
 }
 
 // Buzzer Convenience Functions
 esp_err_t ux_buzzer_silence(void)
 {
-    return ux_service_send_simple_effect(UX_BUZZER_SILENCE);
+    return ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_SILENCE));
 }
 
 esp_err_t ux_buzzer_startup(void)
 {
-    return ux_service_send_simple_effect(UX_BUZZER_STARTUP);
+    return ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_STARTUP));
 }
 
 esp_err_t ux_buzzer_success(void)
 {
-    return ux_service_send_simple_effect(UX_BUZZER_SUCCESS);
+    return ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_SUCCESS));
 }
 
 esp_err_t ux_buzzer_error(void)
 {
-    return ux_service_send_simple_effect(UX_BUZZER_ERROR);
+    return ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_ERROR));
 }
 
 esp_err_t ux_buzzer_notification(void)
 {
-    return ux_service_send_simple_effect(UX_BUZZER_NOTIFICATION);
+    return ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_NOTIFICATION));
 }
 
 // Demo Functions
@@ -243,19 +244,19 @@ esp_err_t ux_service_demo_all_led_effects(void)
     ESP_LOGI(TAG, "🔴 Demo: All LED Effects");
     
     // Send all LED effects with delays between them
-    ux_service_send_simple_effect(UX_LED_ON);
+    ux_service_send_simple_effect(UX_LED_EFFECT(UX_LED_EFFECT_ON));
     vTaskDelay(pdMS_TO_TICKS(1000));
     
-    ux_service_send_effect(UX_LED_BLINK_FAST, 2000, 0, 0);
+    ux_service_send_effect(UX_LED_EFFECT(UX_LED_EFFECT_BLINK_FAST), 2000, 0, 0);
     vTaskDelay(pdMS_TO_TICKS(3000));
     
-    ux_service_send_effect(UX_LED_BREATHING, 0, 2, 0);
+    ux_service_send_effect(UX_LED_EFFECT(UX_LED_EFFECT_BREATHING), 0, 2, 0);
     vTaskDelay(pdMS_TO_TICKS(3000));
     
-    ux_service_send_simple_effect(UX_LED_SUCCESS_PATTERN);
+    ux_service_send_simple_effect(UX_LED_EFFECT(UX_LED_EFFECT_SUCCESS_PATTERN));
     vTaskDelay(pdMS_TO_TICKS(2000));
     
-    ux_service_send_simple_effect(UX_LED_OFF);
+    ux_service_send_simple_effect(UX_LED_EFFECT(UX_LED_EFFECT_OFF));
     
     return ESP_OK;
 }
@@ -265,19 +266,19 @@ esp_err_t ux_service_demo_all_buzzer_effects(void)
     ESP_LOGI(TAG, "🔊 Demo: All Buzzer Effects");
     
     // Send all buzzer effects with delays between them
-    ux_service_send_simple_effect(UX_BUZZER_STARTUP);
+    ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_STARTUP));
     vTaskDelay(pdMS_TO_TICKS(2000));
     
-    ux_service_send_simple_effect(UX_BUZZER_SUCCESS);
+    ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_SUCCESS));
     vTaskDelay(pdMS_TO_TICKS(2000));
     
-    ux_service_send_simple_effect(UX_BUZZER_ERROR);
+    ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_ERROR));
     vTaskDelay(pdMS_TO_TICKS(2000));
     
-    ux_service_send_simple_effect(UX_BUZZER_NOTIFICATION);
+    ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_NOTIFICATION));
     vTaskDelay(pdMS_TO_TICKS(2000));
     
-    ux_service_send_simple_effect(UX_BUZZER_SILENCE);
+    ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_SILENCE));
     
     return ESP_OK;
 }
@@ -295,6 +296,51 @@ esp_err_t ux_service_demo_all_effects(void)
 }
 
 // Private Functions
+
+/**
+ * @brief Queue startup demo effects for LED and Buzzer
+ * 
+ * This function queues a series of demo effects to showcase
+ * the capabilities of both LED and buzzer components.
+ */
+static void ux_queue_startup_demo_effects(void)
+{
+    if (demo_completed || ux_queue == NULL) {
+        return;
+    }
+    
+    ESP_LOGI(TAG, "🎨 Sending startup demo effects to queue...");
+    
+    // Send LED demo effects
+    ux_message_t led_effects[] = {
+        {UX_LED_EFFECT(UX_LED_EFFECT_ON), 1000, 0, 0},           // LED on for 1s
+        {UX_LED_EFFECT(UX_LED_EFFECT_BLINK_FAST), 2000, 0, 0},  // Fast blink for 2s
+        {UX_LED_EFFECT(UX_LED_EFFECT_BREATHING), 0, 2, 0},       // Breathing 2 cycles
+        {UX_LED_EFFECT(UX_LED_EFFECT_SUCCESS_PATTERN), 0, 0, 0}, // Success pattern
+        {UX_LED_EFFECT(UX_LED_EFFECT_OFF), 0, 0, 0}              // LED off
+    };
+    
+    for (int i = 0; i < 5; i++) {
+        xQueueSend(ux_queue, &led_effects[i], portMAX_DELAY);
+    }
+    
+    // Send buzzer demo effects
+    ux_message_t buzzer_effects[] = {
+        {UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_STARTUP), 0, 0, 0},      // Startup sound
+        {UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_SUCCESS), 0, 0, 0},      // Success sound
+        {UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_ERROR), 0, 0, 0},        // Error sound
+        {UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_NOTIFICATION), 0, 0, 0}, // Notification sound
+        {UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_SILENCE), 0, 0, 0}       // Silence
+    };
+    
+    for (int i = 0; i < 5; i++) {
+        xQueueSend(ux_queue, &buzzer_effects[i], portMAX_DELAY);
+    }
+    
+    demo_completed = true;
+    ESP_LOGI(TAG, "🎨 Startup demo effects queued successfully");
+}
+
 static void ux_service_task(void *pvParameters)
 {
     ESP_LOGI(TAG, "🎨 UX Service task started");
@@ -302,42 +348,8 @@ static void ux_service_task(void *pvParameters)
     // Wait a bit for hardware to stabilize
     vTaskDelay(pdMS_TO_TICKS(500));
     
-    // Send startup demo effects to the queue
-    if (!demo_completed) {
-        ESP_LOGI(TAG, "🎨 Sending startup demo effects to queue...");
-        
-        // Send LED demo effects
-        ux_message_t led_effects[] = {
-            {UX_LED_ON, 1000, 0, 0},           // LED on for 1s
-            {UX_LED_BLINK_FAST, 2000, 0, 0},  // Fast blink for 2s
-            {UX_LED_BREATHING, 0, 2, 0},       // Breathing 2 cycles
-            {UX_LED_SUCCESS_PATTERN, 0, 0, 0}, // Success pattern
-            {UX_LED_OFF, 0, 0, 0}              // LED off
-        };
-        
-        for (int i = 0; i < 5; i++) {
-            xQueueSend(ux_queue, &led_effects[i], portMAX_DELAY);
-        }
-        
-        // Add delay between LED and buzzer demos
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        
-        // Send buzzer demo effects
-        ux_message_t buzzer_effects[] = {
-            {UX_BUZZER_STARTUP, 0, 0, 0},      // Startup sound
-            {UX_BUZZER_SUCCESS, 0, 0, 0},      // Success sound
-            {UX_BUZZER_ERROR, 0, 0, 0},        // Error sound
-            {UX_BUZZER_NOTIFICATION, 0, 0, 0}, // Notification sound
-            {UX_BUZZER_SILENCE, 0, 0, 0}       // Silence
-        };
-        
-        for (int i = 0; i < 5; i++) {
-            xQueueSend(ux_queue, &buzzer_effects[i], portMAX_DELAY);
-        }
-        
-        demo_completed = true;
-        ESP_LOGI(TAG, "🎨 Startup demo effects queued successfully");
-    }
+    // Queue startup demo effects
+    ux_queue_startup_demo_effects();
     
     ux_message_t message;
     
@@ -346,34 +358,34 @@ static void ux_service_task(void *pvParameters)
         if (xQueueReceive(ux_queue, &message, pdMS_TO_TICKS(1000)) == pdTRUE) {
             ux_stats.messages_processed++;
             
-            ESP_LOGI(TAG, "🎬 Processing: %s", ux_effect_type_to_string(message.effect_type));
+            ESP_LOGI(TAG, "🎬 Processing: %s", ux_effect_to_string(message.effect));
             
             esp_err_t result = ESP_OK;
             
-            // Route message based on effect type
-            if (message.effect_type >= UX_LED_OFF && message.effect_type <= UX_LED_SUCCESS_PATTERN) {
-                result = ux_execute_led_effect(message.effect_type, message.duration_ms, 
+            // Route message based on device type
+            if (message.effect.device_type == UX_DEVICE_LED) {
+                result = ux_execute_led_effect(message.effect.led_effect, message.duration_ms, 
                                              message.repeat_count, message.parameter);
                 if (result == ESP_OK) {
                     ux_stats.led_effects_count++;
                 }
             }
-            else if (message.effect_type >= UX_BUZZER_SILENCE && message.effect_type <= UX_BUZZER_NOTIFICATION) {
-                result = ux_execute_buzzer_effect(message.effect_type, message.duration_ms, 
+            else if (message.effect.device_type == UX_DEVICE_BUZZER) {
+                result = ux_execute_buzzer_effect(message.effect.buzzer_effect, message.duration_ms, 
                                                 message.repeat_count, message.parameter);
                 if (result == ESP_OK) {
                     ux_stats.buzzer_effects_count++;
                 }
             }
             else {
-                ESP_LOGW(TAG, "Unknown UX effect type: %d", message.effect_type);
+                ESP_LOGW(TAG, "Unknown UX device type: %d", message.effect.device_type);
                 result = ESP_ERR_INVALID_ARG;
             }
             
             if (result != ESP_OK) {
                 ux_stats.execution_errors++;
-                ESP_LOGE(TAG, "Failed to execute UX effect %d: %s", 
-                         message.effect_type, esp_err_to_name(result));
+                ESP_LOGE(TAG, "Failed to execute UX effect %s: %s", 
+                         ux_effect_to_string(message.effect), esp_err_to_name(result));
             }
         }
     }
@@ -382,20 +394,20 @@ static void ux_service_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-static esp_err_t ux_execute_led_effect(ux_effect_type_t effect_type, uint32_t duration_ms, uint32_t repeat_count, uint32_t parameter)
+static esp_err_t ux_execute_led_effect(ux_led_effect_type_t effect_type, uint32_t duration_ms, uint32_t repeat_count, uint32_t parameter)
 {
     esp_err_t ret = ESP_OK;
     
     switch (effect_type) {
-        case UX_LED_OFF:
+        case UX_LED_EFFECT_OFF:
             ret = ux_led_set(false);
             break;
             
-        case UX_LED_ON:
+        case UX_LED_EFFECT_ON:
             ret = ux_led_set(true);
             break;
             
-        case UX_LED_BLINK_FAST:
+        case UX_LED_EFFECT_BLINK_FAST:
             if (duration_ms > 0) {
                 uint32_t cycles = duration_ms / 200; // 100ms on + 100ms off = 200ms per cycle
                 ret = ux_led_blink(100, 100, cycles);
@@ -404,7 +416,16 @@ static esp_err_t ux_execute_led_effect(ux_effect_type_t effect_type, uint32_t du
             }
             break;
             
-        case UX_LED_BREATHING:
+        case UX_LED_EFFECT_BLINK_SLOW:
+            if (duration_ms > 0) {
+                uint32_t cycles = duration_ms / 1000; // 500ms on + 500ms off = 1000ms per cycle
+                ret = ux_led_blink(500, 500, cycles);
+            } else {
+                ret = ux_led_blink(500, 500, 5); // Default 5 cycles (5 seconds)
+            }
+            break;
+            
+        case UX_LED_EFFECT_BREATHING:
             {
                 uint32_t cycles = repeat_count > 0 ? repeat_count : 3; // Default 3 cycles
                 // Simulate breathing effect with slow blink
@@ -412,9 +433,14 @@ static esp_err_t ux_execute_led_effect(ux_effect_type_t effect_type, uint32_t du
             }
             break;
             
-        case UX_LED_SUCCESS_PATTERN:
+        case UX_LED_EFFECT_SUCCESS_PATTERN:
             // Success pattern: 3 quick blinks
             ret = ux_led_blink(150, 150, 3);
+            break;
+            
+        case UX_LED_EFFECT_ERROR_PATTERN:
+            // Error pattern: rapid blink 5 times
+            ret = ux_led_blink(100, 100, 5);
             break;
             
         default:
@@ -426,16 +452,16 @@ static esp_err_t ux_execute_led_effect(ux_effect_type_t effect_type, uint32_t du
     return ret;
 }
 
-static esp_err_t ux_execute_buzzer_effect(ux_effect_type_t effect_type, uint32_t duration_ms, uint32_t repeat_count, uint32_t parameter)
+static esp_err_t ux_execute_buzzer_effect(ux_buzzer_effect_type_t effect_type, uint32_t duration_ms, uint32_t repeat_count, uint32_t parameter)
 {
     esp_err_t ret = ESP_OK;
     
     switch (effect_type) {
-        case UX_BUZZER_SILENCE:
+        case UX_BUZZER_EFFECT_SILENCE:
             ret = ux_buzzer_stop();
             break;
             
-        case UX_BUZZER_STARTUP:
+        case UX_BUZZER_EFFECT_STARTUP:
             // Startup sound: ascending tones
             ret = ux_buzzer_tone(440, 200); // A4
             vTaskDelay(pdMS_TO_TICKS(250));
@@ -444,7 +470,7 @@ static esp_err_t ux_execute_buzzer_effect(ux_effect_type_t effect_type, uint32_t
             ret = ux_buzzer_tone(659, 300); // E5
             break;
             
-        case UX_BUZZER_SUCCESS:
+        case UX_BUZZER_EFFECT_SUCCESS:
             // Success sound: happy melody
             ret = ux_buzzer_tone(523, 150); // C5
             vTaskDelay(pdMS_TO_TICKS(170));
@@ -453,7 +479,7 @@ static esp_err_t ux_execute_buzzer_effect(ux_effect_type_t effect_type, uint32_t
             ret = ux_buzzer_tone(784, 200); // G5
             break;
             
-        case UX_BUZZER_ERROR:
+        case UX_BUZZER_EFFECT_ERROR:
             // Error sound: descending tones
             ret = ux_buzzer_tone(800, 200); // High
             vTaskDelay(pdMS_TO_TICKS(220));
@@ -462,11 +488,23 @@ static esp_err_t ux_execute_buzzer_effect(ux_effect_type_t effect_type, uint32_t
             ret = ux_buzzer_tone(400, 300); // Low
             break;
             
-        case UX_BUZZER_NOTIFICATION:
+        case UX_BUZZER_EFFECT_NOTIFICATION:
             // Notification: double beep
             ret = ux_buzzer_tone(1000, 150);
             vTaskDelay(pdMS_TO_TICKS(200));
             ret = ux_buzzer_tone(1000, 150);
+            break;
+            
+        case UX_BUZZER_EFFECT_WARNING:
+            // Warning: alternating tones
+            ret = ux_buzzer_tone(500, 200);
+            vTaskDelay(pdMS_TO_TICKS(220));
+            ret = ux_buzzer_tone(400, 200);
+            break;
+            
+        case UX_BUZZER_EFFECT_CLICK:
+            // Click: very short high tone
+            ret = ux_buzzer_tone(1000, 50);
             break;
             
         default:
@@ -638,25 +676,40 @@ static esp_err_t ux_buzzer_stop(void)
 }
 
 // Effect type to string conversion for human-friendly logging
-static const char* ux_effect_type_to_string(ux_effect_type_t effect_type)
+static const char* ux_effect_to_string(ux_effect_t effect)
 {
-    switch (effect_type) {
-        case UX_EFFECT_NONE:           return "NONE";
-        
-        // LED Effects
-        case UX_LED_OFF:               return "🔴 LED OFF";
-        case UX_LED_ON:                return "🔴 LED ON";
-        case UX_LED_BLINK_FAST:        return "🔴 LED BLINK FAST";
-        case UX_LED_BREATHING:         return "🔴 LED BREATHING";
-        case UX_LED_SUCCESS_PATTERN:   return "🔴 LED SUCCESS";
-        
-        // Buzzer Effects
-        case UX_BUZZER_SILENCE:        return "🔊 BUZZER SILENCE";
-        case UX_BUZZER_STARTUP:        return "🔊 BUZZER STARTUP";
-        case UX_BUZZER_SUCCESS:        return "🔊 BUZZER SUCCESS";
-        case UX_BUZZER_ERROR:          return "🔊 BUZZER ERROR";
-        case UX_BUZZER_NOTIFICATION:   return "🔊 BUZZER NOTIFICATION";
-        
-        default:                       return "UNKNOWN";
+    static char buffer[64];
+    
+    switch (effect.device_type) {
+        case UX_DEVICE_LED:
+            switch (effect.led_effect) {
+                case UX_LED_EFFECT_OFF:              return "🔴 LED OFF";
+                case UX_LED_EFFECT_ON:               return "🔴 LED ON";
+                case UX_LED_EFFECT_BLINK_FAST:       return "🔴 LED BLINK FAST";
+                case UX_LED_EFFECT_BLINK_SLOW:       return "🔴 LED BLINK SLOW";
+                case UX_LED_EFFECT_BREATHING:        return "🔴 LED BREATHING";
+                case UX_LED_EFFECT_SUCCESS_PATTERN:  return "🔴 LED SUCCESS";
+                case UX_LED_EFFECT_ERROR_PATTERN:    return "🔴 LED ERROR";
+                default:                             return "🔴 LED UNKNOWN";
+            }
+            break;
+            
+        case UX_DEVICE_BUZZER:
+            switch (effect.buzzer_effect) {
+                case UX_BUZZER_EFFECT_SILENCE:       return "🔊 BUZZER SILENCE";
+                case UX_BUZZER_EFFECT_STARTUP:       return "🔊 BUZZER STARTUP";
+                case UX_BUZZER_EFFECT_SUCCESS:       return "🔊 BUZZER SUCCESS";
+                case UX_BUZZER_EFFECT_ERROR:         return "🔊 BUZZER ERROR";
+                case UX_BUZZER_EFFECT_NOTIFICATION:  return "🔊 BUZZER NOTIFICATION";
+                case UX_BUZZER_EFFECT_WARNING:       return "🔊 BUZZER WARNING";
+                case UX_BUZZER_EFFECT_CLICK:         return "🔊 BUZZER CLICK";
+                default:                             return "🔊 BUZZER UNKNOWN";
+            }
+            break;
+            
+        case UX_DEVICE_NONE:
+        default:
+            snprintf(buffer, sizeof(buffer), "UNKNOWN DEVICE (%d)", effect.device_type);
+            return buffer;
     }
 }
