@@ -1,5 +1,6 @@
 #include "page_manager_espnow.h"
 #include "page_manager.h"
+#include "espnow_manager.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_mac.h"
@@ -16,15 +17,12 @@ static lv_obj_t *g_espnow_memory_label = NULL;
 static lv_obj_t *g_espnow_status_label = NULL;
 static lv_obj_t *g_espnow_sent_label = NULL;
 static lv_obj_t *g_espnow_recv_label = NULL;
-static lv_obj_t *g_espnow_signal_bar = NULL;
 
 // ESP-NOW data state management
 static atomic_bool g_espnow_data_updated = ATOMIC_VAR_INIT(false);
 
-// ESP-NOW statistics (simulated for now)
-static uint32_t g_packets_sent = 0;
-static uint32_t g_packets_received = 0;
-static uint8_t g_signal_strength = 75; // 0-100
+// Real ESP-NOW statistics from manager
+static espnow_stats_t g_espnow_stats = {0};
 
 // Helper function to get WiFi MAC address as formatted string
 static esp_err_t get_wifi_mac_string(char *mac_str, size_t mac_str_size)
@@ -105,7 +103,6 @@ static esp_err_t espnow_page_init(void)
     g_espnow_status_label = NULL;
     g_espnow_sent_label = NULL;
     g_espnow_recv_label = NULL;
-    g_espnow_signal_bar = NULL;
     
     // Reset data state - atomic variable doesn't need explicit initialization
     atomic_store(&g_espnow_data_updated, false);
@@ -203,7 +200,7 @@ static esp_err_t create_espnow_page_ui(void)
     // Send counter (moved up)
     g_espnow_sent_label = lv_label_create(scr);
     char sent_text[32];
-    snprintf(sent_text, sizeof(sent_text), "Sent: %"PRIu32" packets", g_packets_sent);
+    snprintf(sent_text, sizeof(sent_text), "Sent: %"PRIu32" packets", g_espnow_stats.packets_sent);
     lv_label_set_text(g_espnow_sent_label, sent_text);
     lv_obj_set_style_text_color(g_espnow_sent_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(g_espnow_sent_label, &lv_font_montserrat_18, LV_PART_MAIN);
@@ -212,19 +209,11 @@ static esp_err_t create_espnow_page_ui(void)
     // Receive counter (moved up)
     g_espnow_recv_label = lv_label_create(scr);
     char recv_text[32];
-    snprintf(recv_text, sizeof(recv_text), "Received: %"PRIu32" packets", g_packets_received);
+    snprintf(recv_text, sizeof(recv_text), "Received: %"PRIu32" packets", g_espnow_stats.packets_received);
     lv_label_set_text(g_espnow_recv_label, recv_text);
     lv_obj_set_style_text_color(g_espnow_recv_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(g_espnow_recv_label, &lv_font_montserrat_18, LV_PART_MAIN);
     lv_obj_set_pos(g_espnow_recv_label, 10, 74);
-    
-    // Signal strength indicator
-    g_espnow_signal_bar = lv_bar_create(scr);
-    lv_obj_set_size(g_espnow_signal_bar, 80, 8);
-    lv_obj_set_pos(g_espnow_signal_bar, 150, 75);
-    lv_obj_set_style_bg_color(g_espnow_signal_bar, lv_color_hex(0x333333), LV_PART_MAIN);
-    lv_obj_set_style_bg_color(g_espnow_signal_bar, lv_color_white(), LV_PART_INDICATOR);
-    lv_bar_set_value(g_espnow_signal_bar, g_signal_strength, LV_ANIM_OFF);
     
     // Uptime at bottom-left
     g_espnow_uptime_label = lv_label_create(scr);
@@ -269,28 +258,23 @@ static esp_err_t update_espnow_page_ui(void)
     // Update packet statistics
     if (g_espnow_sent_label != NULL) {
         char sent_text[32];
-        snprintf(sent_text, sizeof(sent_text), "Sent: %"PRIu32" packets", g_packets_sent);
+        snprintf(sent_text, sizeof(sent_text), "Sent: %"PRIu32" packets", g_espnow_stats.packets_sent);
         lv_label_set_text(g_espnow_sent_label, sent_text);
     }
     
     if (g_espnow_recv_label != NULL) {
         char recv_text[32];
-        snprintf(recv_text, sizeof(recv_text), "Received: %"PRIu32" packets", g_packets_received);
+        snprintf(recv_text, sizeof(recv_text), "Received: %"PRIu32" packets", g_espnow_stats.packets_received);
         lv_label_set_text(g_espnow_recv_label, recv_text);
-    }
-    
-    // Update signal strength bar
-    if (g_espnow_signal_bar != NULL) {
-        lv_bar_set_value(g_espnow_signal_bar, g_signal_strength, LV_ANIM_OFF);
     }
     
     // Simulate some activity (increment counters occasionally)
     static uint32_t update_counter = 0;
     update_counter++;
     if (update_counter % 10 == 0) {  // Every 10th update (5 seconds)
-        g_packets_sent++;
+        g_espnow_stats.packets_sent++;
         if (update_counter % 20 == 0) {  // Every 20th update (10 seconds)
-            g_packets_received++;
+            g_espnow_stats.packets_received++;
         }
     }
     
@@ -310,7 +294,6 @@ static esp_err_t destroy_espnow_page_ui(void)
     g_espnow_status_label = NULL;
     g_espnow_sent_label = NULL;
     g_espnow_recv_label = NULL;
-    g_espnow_signal_bar = NULL;
     
     return ESP_OK;
 }
@@ -324,7 +307,7 @@ static bool espnow_page_handle_key_event(uint32_t key)
         case LV_KEY_ENTER:
             ESP_LOGI(TAG, "📤 ESP-NOW page ENTER - Send test packet");
             // Example: Send a test ESP-NOW packet
-            g_packets_sent++; // Simulate packet sending
+            g_espnow_stats.packets_sent++; // Simulate packet sending
             return true;  // We handled this key
             
         case LV_KEY_UP:

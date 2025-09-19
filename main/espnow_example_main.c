@@ -29,6 +29,9 @@
 #include "esp_now.h"
 #include "esp_crc.h"
 #include "espnow_example.h"
+
+// M5StickC Plus project includes
+#include "espnow_manager.h"
 #include "axp192.h"
 #include "st7789_lcd.h"
 #include "button.h"
@@ -753,6 +756,21 @@ void app_main(void)
     xTaskCreate(task_monitor_debug, "task_monitor", 2048, NULL, 1, NULL);
 
     // 可选：启动WiFi和ESP-NOW（如果需要网络功能）
+    // Original ESP-NOW example (commented out)
     // example_wifi_init();
     // example_espnow_init();
+    
+    // New ESP-NOW manager integration
+    ESP_LOGI(TAG, "🌐 Initializing ESP-NOW Manager...");
+    esp_err_t espnow_ret = espnow_manager_init();
+    if (espnow_ret == ESP_OK) {
+        espnow_ret = espnow_manager_start();
+        if (espnow_ret == ESP_OK) {
+            ESP_LOGI(TAG, "✅ ESP-NOW Manager started successfully");
+        } else {
+            ESP_LOGE(TAG, "❌ Failed to start ESP-NOW Manager: %s", esp_err_to_name(espnow_ret));
+        }
+    } else {
+        ESP_LOGE(TAG, "❌ Failed to initialize ESP-NOW Manager: %s", esp_err_to_name(espnow_ret));
+    }
 }
