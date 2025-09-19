@@ -168,6 +168,13 @@ void espnow_page_notify_data_update(void)
 // Internal UI creation function
 static esp_err_t create_espnow_page_ui(void)
 {
+    // Get latest statistics from ESP-NOW manager before creating UI
+    espnow_stats_t latest_stats = {0};
+    if (espnow_manager_get_stats(&latest_stats) == ESP_OK) {
+        // Update local stats with latest data
+        g_espnow_stats = latest_stats;
+    }
+    
     lv_obj_t *scr = lv_scr_act();
     
     // Clear screen
@@ -241,6 +248,13 @@ static esp_err_t create_espnow_page_ui(void)
 // Internal UI update function
 static esp_err_t update_espnow_page_ui(void)
 {
+    // Get latest statistics from ESP-NOW manager
+    espnow_stats_t latest_stats = {0};
+    if (espnow_manager_get_stats(&latest_stats) == ESP_OK) {
+        // Update local stats with latest data
+        g_espnow_stats = latest_stats;
+    }
+    
     // Update uptime display
     if (g_espnow_uptime_label != NULL) {
         char uptime_text[16];
@@ -266,16 +280,6 @@ static esp_err_t update_espnow_page_ui(void)
         char recv_text[32];
         snprintf(recv_text, sizeof(recv_text), "Received: %"PRIu32" packets", g_espnow_stats.packets_received);
         lv_label_set_text(g_espnow_recv_label, recv_text);
-    }
-    
-    // Simulate some activity (increment counters occasionally)
-    static uint32_t update_counter = 0;
-    update_counter++;
-    if (update_counter % 10 == 0) {  // Every 10th update (5 seconds)
-        g_espnow_stats.packets_sent++;
-        if (update_counter % 20 == 0) {  // Every 20th update (10 seconds)
-            g_espnow_stats.packets_received++;
-        }
     }
     
     return ESP_OK;
@@ -306,8 +310,8 @@ static bool espnow_page_handle_key_event(uint32_t key)
     switch (key) {
         case LV_KEY_ENTER:
             ESP_LOGI(TAG, "📤 ESP-NOW page ENTER - Send test packet");
-            // Example: Send a test ESP-NOW packet
-            g_espnow_stats.packets_sent++; // Simulate packet sending
+            // Send a real test packet through ESP-NOW manager
+            espnow_manager_send_test_packet();
             return true;  // We handled this key
             
         case LV_KEY_UP:

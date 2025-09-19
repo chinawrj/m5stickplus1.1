@@ -263,12 +263,22 @@ esp_err_t espnow_manager_send_test_packet(void)
         return ESP_ERR_INVALID_STATE;
     }
     
-    // For now, just increment the counter
-    // The actual sending will be handled by the main task
-    s_stats.packets_sent++;
-    ESP_LOGI(TAG, "📤 Test packet queued (Total sent: %lu)", s_stats.packets_sent);
+    if (s_discovery_task_handle == NULL) {
+        ESP_LOGW(TAG, "Device discovery task not running, cannot trigger immediate send");
+        return ESP_ERR_INVALID_STATE;
+    }
     
-    return ESP_OK;
+    // Notify the device discovery task to send immediately
+    ESP_LOGI(TAG, "📤 Triggering immediate device discovery broadcast");
+    BaseType_t notify_result = xTaskNotify(s_discovery_task_handle, 0x01, eSetBits);
+    
+    if (notify_result == pdPASS) {
+        ESP_LOGI(TAG, "✅ Discovery task notified successfully");
+        return ESP_OK;
+    } else {
+        ESP_LOGE(TAG, "❌ Failed to notify discovery task");
+        return ESP_FAIL;
+    }
 }
 
 // WiFi initialization (matching official example)
@@ -465,9 +475,23 @@ static void device_discovery_task(void *pvParameter)
             param->last_send_time = xTaskGetTickCount();
         }
         
-        // Wait exactly 5 seconds from completion time
-        ESP_LOGI(TAG, "⏱️ Waiting %lu seconds until next discovery broadcast...", DISCOVERY_INTERVAL_MS / 1000);
-        vTaskDelay(pdMS_TO_TICKS(DISCOVERY_INTERVAL_MS));
+        // Wait for next discovery interval or immediate trigger
+        ESP_LOGI(TAG, "⏱️ Waiting %lu seconds until next discovery broadcast (or immediate trigger)...", DISCOVERY_INTERVAL_MS / 1000);
+        
+        // Use task notification with timeout for DISCOVERY_INTERVAL_MS
+        uint32_t notification_value;
+        BaseType_t notify_result = xTaskNotifyWait(
+            0x00,      // Don't clear any notification bits on entry
+            0xFFFFFFFF, // Clear all notification bits on exit
+            &notification_value,
+            pdMS_TO_TICKS(DISCOVERY_INTERVAL_MS)  // Wait timeout
+        );
+        
+        if (notify_result == pdTRUE) {
+            ESP_LOGI(TAG, "🚀 Immediate discovery trigger received (notification: 0x%08lX)", notification_value);
+        } else {
+            ESP_LOGD(TAG, "⏰ Discovery interval timeout - proceeding with next broadcast");
+        }
     }
     
     ESP_LOGI(TAG, "🔍 Device Discovery Task ending");
@@ -522,6 +546,14 @@ static void espnow_recv_only_task(void *pvParameter)
                     s_discovery_param->send_completed = true;
                     ESP_LOGD(TAG, "🔍 Discovery send callback: %s", 
                              (send_cb->status == ESP_NOW_SEND_SUCCESS) ? "SUCCESS" : "FAILED");
+                }
+                
+                // Update send statistics
+                if (send_cb->status == ESP_NOW_SEND_SUCCESS) {
+                    s_stats.packets_sent++;
+                    s_stats.send_success++;
+                } else {
+                    s_stats.send_failed++;
                 }
                 
                 ESP_LOGD(TAG, "📤 Send callback: "MACSTR", status: %d", 
