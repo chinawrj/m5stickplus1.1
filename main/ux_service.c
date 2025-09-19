@@ -238,63 +238,6 @@ esp_err_t ux_buzzer_notification(void)
     return ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_NOTIFICATION));
 }
 
-// Demo Functions
-esp_err_t ux_service_demo_all_led_effects(void)
-{
-    ESP_LOGI(TAG, "🔴 Demo: All LED Effects");
-    
-    // Send all LED effects with delays between them
-    ux_service_send_simple_effect(UX_LED_EFFECT(UX_LED_EFFECT_ON));
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    
-    ux_service_send_effect(UX_LED_EFFECT(UX_LED_EFFECT_BLINK_FAST), 2000, 0, 0);
-    vTaskDelay(pdMS_TO_TICKS(3000));
-    
-    ux_service_send_effect(UX_LED_EFFECT(UX_LED_EFFECT_BREATHING), 0, 2, 0);
-    vTaskDelay(pdMS_TO_TICKS(3000));
-    
-    ux_service_send_simple_effect(UX_LED_EFFECT(UX_LED_EFFECT_SUCCESS_PATTERN));
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    
-    ux_service_send_simple_effect(UX_LED_EFFECT(UX_LED_EFFECT_OFF));
-    
-    return ESP_OK;
-}
-
-esp_err_t ux_service_demo_all_buzzer_effects(void)
-{
-    ESP_LOGI(TAG, "🔊 Demo: All Buzzer Effects");
-    
-    // Send all buzzer effects with delays between them
-    ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_STARTUP));
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    
-    ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_SUCCESS));
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    
-    ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_ERROR));
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    
-    ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_NOTIFICATION));
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    
-    ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_SILENCE));
-    
-    return ESP_OK;
-}
-
-esp_err_t ux_service_demo_all_effects(void)
-{
-    ESP_LOGI(TAG, "🎨 Demo: All UX Effects");
-    
-    ux_service_demo_all_led_effects();
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    
-    ux_service_demo_all_buzzer_effects();
-    
-    return ESP_OK;
-}
-
 // Private Functions
 
 /**

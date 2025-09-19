@@ -190,14 +190,4 @@ esp_err_t ux_buzzer_success(void);
 esp_err_t ux_buzzer_error(void);
 esp_err_t ux_buzzer_notification(void);
 
-/**
- * @brief Demo Functions for Testing
- * 
- * These functions demonstrate all available UX effects
- * for testing and validation purposes.
- */
-esp_err_t ux_service_demo_all_led_effects(void);
-esp_err_t ux_service_demo_all_buzzer_effects(void);
-esp_err_t ux_service_demo_all_effects(void);
-
 #endif // UX_SERVICE_H
