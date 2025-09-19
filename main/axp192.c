@@ -123,7 +123,45 @@ esp_err_t axp192_init(void)
         return ret;
     }
     
-    ESP_LOGI(TAG, "AXP192 initialized successfully");
+    // 默认开启LCD和BUZZER电源 (开机即可用)
+    ESP_LOGI(TAG, "Enabling default power channels for LCD and BUZZER...");
+    
+    // 开启TFT显示屏电源 (LDO3=3.0V)
+    ret = axp192_power_tft_display(true);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to enable TFT display power");
+        return ret;
+    }
+    
+    // 开启TFT背光电源 (LDO2=3.3V)
+    ret = axp192_power_tft_backlight(true);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to enable TFT backlight power");
+        return ret;
+    }
+    
+    // 开启5V GROVE电源 (EXTEN) - BUZZER必需
+    ret = axp192_power_grove_5v(true);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to enable 5V GROVE power for BUZZER");
+        return ret;
+    }
+
+    // Enable LDO0 for Microphone (3.3V)
+    ret = axp192_power_microphone(true);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to enable Microphone power");
+        return ret;
+    }
+
+    // 开启DC-DC1供电ESP32核心 (3.3V)
+    ret = axp192_power_esp32(true);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to enable ESP32 power");
+        return ret;
+    }
+    
+    ESP_LOGI(TAG, "AXP192 initialized successfully with LCD and BUZZER power enabled");
     return ESP_OK;
 }
 

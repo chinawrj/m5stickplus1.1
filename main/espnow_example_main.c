@@ -31,14 +31,13 @@
 #include "espnow_example.h"
 #include "axp192.h"
 #include "st7789_lcd.h"
-#include "buzzer.h"
-#include "red_led.h"
 #include "button.h"
 #include "lvgl_init.h"
 #include "system_monitor.h"
 #include "page_manager.h"
 #include "lvgl_button_input.h"
 #include "page_manager_lvgl.h"
+#include "ux_service.h"
 
 #define ESPNOW_MAXDELAY 512
 
@@ -526,69 +525,9 @@ static void axp192_monitor_task(void *pvParameters)
                 ESP_LOGE(TAG, "🖥️  ST7789 TFT显示屏初始化失败: %s", esp_err_to_name(tft_ret));
             }
             
-            // 6. 蜂鸣器演示
-            ESP_LOGI(TAG, "🔊 开始无源蜂鸣器演示");
-            esp_err_t buzzer_ret = buzzer_init();
-            if (buzzer_ret == ESP_OK) {
-                ESP_LOGI(TAG, "🔊 蜂鸣器初始化成功");
-                ESP_LOGI(TAG, "🎵 开始蜂鸣器测试...");
-                
-                // 播放启动音效
-                buzzer_play_startup();
-                vTaskDelay(pdMS_TO_TICKS(1000));
-                
-                // 运行完整测试模式
-                buzzer_ret = buzzer_test_patterns();
-                if (buzzer_ret == ESP_OK) {
-                    ESP_LOGI(TAG, "🎵 蜂鸣器测试完成");
-                    // 播放成功音效
-                    buzzer_play_success();
-                } else {
-                    ESP_LOGE(TAG, "🎵 蜂鸣器测试失败: %s", esp_err_to_name(buzzer_ret));
-                    buzzer_play_error();
-                }
-                
-                vTaskDelay(pdMS_TO_TICKS(1000));
-                
-                // 清理蜂鸣器资源
-                ESP_LOGI(TAG, "🧹 清理蜂鸣器资源");
-                buzzer_deinit();
-                
-            } else {
-                ESP_LOGE(TAG, "🔊 蜂鸣器初始化失败: %s", esp_err_to_name(buzzer_ret));
-            }
-            
-            // 7. 红色LED演示
-            ESP_LOGI(TAG, "🔴 开始红色LED演示");
-            esp_err_t led_ret = red_led_init();
-            if (led_ret == ESP_OK) {
-                ESP_LOGI(TAG, "🔴 红色LED初始化成功");
-                ESP_LOGI(TAG, "💡 开始LED测试...");
-                
-                // 播放LED启动指示
-                red_led_indicate_boot();
-                vTaskDelay(pdMS_TO_TICKS(1000));
-                
-                // 运行完整LED测试模式
-                led_ret = red_led_test_patterns();
-                if (led_ret == ESP_OK) {
-                    ESP_LOGI(TAG, "💡 LED测试完成");
-                    // 播放成功指示
-                    red_led_indicate_success();
-                } else {
-                    ESP_LOGE(TAG, "💡 LED测试失败: %s", esp_err_to_name(led_ret));
-                    red_led_indicate_error();
-                }
-                
-                vTaskDelay(pdMS_TO_TICKS(1000));
-                
-                // 清理LED资源
-                ESP_LOGI(TAG, "🧹 清理LED资源");
-                red_led_deinit();
-
-            } else {
-                ESP_LOGE(TAG, "🔴 红色LED初始化失败: %s", esp_err_to_name(led_ret));
-            }
+            // 6. Hardware power management demonstrations completed
+            ESP_LOGI(TAG, "� Hardware demonstrations completed");
+            ESP_LOGI(TAG, "ℹ️  LED/Buzzer effects now managed by UX Service");
             
             // 8. 按键驱动演示
             ESP_LOGI(TAG, "🔘 开始按键驱动演示");
@@ -723,6 +662,16 @@ void app_main(void)
         ESP_LOGI(TAG, "AXP192 initialized successfully");
     }
 
+    // Initialize UX Service (LED/Buzzer Effects) - PRIORITY STARTUP
+    ESP_LOGI(TAG, "🎨 Initializing UX Service...");
+    ret = ux_service_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "UX Service initialization failed: %s", esp_err_to_name(ret));
+        return;
+    }
+    ESP_LOGI(TAG, "🎨 UX Service initialized successfully");
+    ESP_LOGI(TAG, "🎨 UX Service will automatically run demo effects");
+
     // Initialize system monitor
     ESP_LOGI(TAG, "🔍 Initializing system monitor");
     ret = system_monitor_init();
@@ -750,10 +699,9 @@ void app_main(void)
 
     // Initialize multi-page LVGL system
     ESP_LOGI(TAG, "🖥️  Initializing LVGL multi-page system");
+    ESP_LOGI(TAG, "🖥️  LCD and backlight power already enabled by AXP192 init");
     
-    // Power on display
-    axp192_power_tft_display(true);      // Enable TFT display
-    axp192_power_tft_backlight(true);    // Enable TFT backlight
+    // Power stabilization delay (LCD power already enabled)
     vTaskDelay(pdMS_TO_TICKS(500));       // Wait for power stabilization
     
     // Initialize LVGL base system without demo UI for multi-page application
