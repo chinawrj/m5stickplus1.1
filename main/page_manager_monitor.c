@@ -44,6 +44,11 @@ static void format_free_memory_string(char *buffer, size_t buffer_size)
 static esp_err_t create_monitor_page_ui(void);
 static esp_err_t update_monitor_page_ui(void);
 static esp_err_t destroy_monitor_page_ui(void);
+static esp_err_t monitor_page_init(void);
+static esp_err_t monitor_page_create(void);
+static esp_err_t monitor_page_update(void);
+static esp_err_t monitor_page_destroy(void);
+static bool monitor_page_is_data_updated(void);
 
 // Page controller interface implementation
 static const page_controller_t monitor_controller = {
@@ -59,7 +64,7 @@ static const page_controller_t monitor_controller = {
     return &monitor_controller;
 }
 
-esp_err_t monitor_page_init(void)
+static esp_err_t monitor_page_init(void)
 {
     ESP_LOGI(TAG, "Initializing Monitor page module");
     
@@ -73,7 +78,7 @@ esp_err_t monitor_page_init(void)
     return ESP_OK;
 }
 
-esp_err_t monitor_page_create(void)
+static esp_err_t monitor_page_create(void)
 {
     ESP_LOGI(TAG, "Creating Monitor page UI...");
     
@@ -87,7 +92,7 @@ esp_err_t monitor_page_create(void)
     return ESP_OK;
 }
 
-esp_err_t monitor_page_update(void)
+static esp_err_t monitor_page_update(void)
 {
     ESP_LOGD(TAG, "Updating Monitor page data...");
     
@@ -101,7 +106,7 @@ esp_err_t monitor_page_update(void)
     return ESP_OK;
 }
 
-esp_err_t monitor_page_destroy(void)
+static esp_err_t monitor_page_destroy(void)
 {
     ESP_LOGI(TAG, "Destroying Monitor page...");
     
@@ -115,7 +120,7 @@ esp_err_t monitor_page_destroy(void)
     return ESP_OK;
 }
 
-bool monitor_page_is_data_updated(void)
+static bool monitor_page_is_data_updated(void)
 {
     // Monitor page uses system_monitor data update status
     // The system_monitor module handles its own thread safety

@@ -71,6 +71,11 @@ static void format_free_memory_string(char *buffer, size_t buffer_size)
 static esp_err_t create_espnow_page_ui(void);
 static esp_err_t update_espnow_page_ui(void);
 static esp_err_t destroy_espnow_page_ui(void);
+static esp_err_t espnow_page_init(void);
+static esp_err_t espnow_page_create(void);
+static esp_err_t espnow_page_update(void);
+static esp_err_t espnow_page_destroy(void);
+static bool espnow_page_is_data_updated(void);
 
 // Page controller interface implementation
 static const page_controller_t espnow_controller = {
@@ -88,7 +93,7 @@ const page_controller_t* get_espnow_page_controller(void)
     return &espnow_controller;
 }
 
-esp_err_t espnow_page_init(void)
+static esp_err_t espnow_page_init(void)
 {
     ESP_LOGI(TAG, "Initializing ESP-NOW page module");
     
@@ -107,7 +112,7 @@ esp_err_t espnow_page_init(void)
     return ESP_OK;
 }
 
-esp_err_t espnow_page_create(void)
+static esp_err_t espnow_page_create(void)
 {
     ESP_LOGI(TAG, "Creating ESP-NOW page UI...");
     
@@ -121,7 +126,7 @@ esp_err_t espnow_page_create(void)
     return ESP_OK;
 }
 
-esp_err_t espnow_page_update(void)
+static esp_err_t espnow_page_update(void)
 {
     ESP_LOGD(TAG, "Updating ESP-NOW page data...");
     
@@ -135,7 +140,7 @@ esp_err_t espnow_page_update(void)
     return ESP_OK;
 }
 
-esp_err_t espnow_page_destroy(void)
+static esp_err_t espnow_page_destroy(void)
 {
     ESP_LOGI(TAG, "Destroying ESP-NOW page...");
     
@@ -149,7 +154,7 @@ esp_err_t espnow_page_destroy(void)
     return ESP_OK;
 }
 
-bool espnow_page_is_data_updated(void)
+static bool espnow_page_is_data_updated(void)
 {
     // Atomic exchange: get current value and set to false in one operation
     return atomic_exchange(&g_espnow_data_updated, false);
