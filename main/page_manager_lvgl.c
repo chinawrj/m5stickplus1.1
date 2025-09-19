@@ -9,6 +9,7 @@
 #include "page_manager_lvgl.h"
 #include "page_manager.h"
 #include "lvgl_button_input.h"
+#include "ux_service.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -61,6 +62,12 @@ static void screen_key_event_cb(lv_event_t *e)
     // Page didn't handle it, process global navigation keys
     if (key == LV_KEY_RIGHT) {
         ESP_LOGI(TAG, "🚀 Screen RIGHT key - navigating to next page");
+        
+        // Send buzzer click feedback for navigation
+        esp_err_t buzzer_ret = ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_CLICK));
+        if (buzzer_ret != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to send buzzer click feedback: %s", esp_err_to_name(buzzer_ret));
+        }
         
         esp_err_t ret = page_manager_lvgl_next();
         if (ret == ESP_OK) {
