@@ -35,6 +35,9 @@ typedef struct {
     // Data state management
     bool (*is_data_updated)(void);      // Check if page data needs update (atomically clears flag)
     
+    // Input event handling (optional)
+    bool (*handle_key_event)(uint32_t key);  // Handle page-specific key events, return true if handled
+    
     // Page information
     const char *name;                   // Page display name
     page_id_t page_id;                  // Page identifier
@@ -109,6 +112,13 @@ const char* page_manager_get_name(page_id_t page_id);
  * @brief Update current page (if page has update function)
  */
 void page_manager_update_current(void);
+
+/**
+ * @brief Handle key event for current page
+ * @param key LVGL key code
+ * @return true if key was handled by page, false if should be handled globally
+ */
+bool page_manager_handle_key_event(uint32_t key);
 
 /**
  * @brief Check if navigation is available

@@ -222,6 +222,35 @@ void page_manager_update_current(void)
     }
 }
 
+bool page_manager_handle_key_event(uint32_t key)
+{
+    // Check if navigation is disabled
+    if (!g_navigation_enabled) {
+        ESP_LOGD(TAG, "Navigation disabled, ignoring key event %lu", key);
+        return false;
+    }
+    
+    // Get current page controller
+    if (g_current_page >= PAGE_COUNT || g_page_controllers[g_current_page] == NULL) {
+        ESP_LOGW(TAG, "Invalid page controller for page %d", g_current_page);
+        return false;
+    }
+    
+    const page_controller_t *controller = g_page_controllers[g_current_page];
+    
+    // First, let the current page handle the key event
+    if (controller->handle_key_event) {
+        bool handled = controller->handle_key_event(key);
+        if (handled) {
+            ESP_LOGD(TAG, "Page %s handled key event %lu", controller->name, key);
+            return true;  // Page handled the key, don't process globally
+        }
+    }
+    
+    ESP_LOGD(TAG, "Page %s did not handle key %lu, processing globally", controller->name, key);
+    return false;  // Page didn't handle it, let global handler process it
+}
+
 bool page_manager_is_navigation_enabled(void)
 {
     return g_navigation_enabled;

@@ -76,6 +76,7 @@ static esp_err_t espnow_page_create(void);
 static esp_err_t espnow_page_update(void);
 static esp_err_t espnow_page_destroy(void);
 static bool espnow_page_is_data_updated(void);
+static bool espnow_page_handle_key_event(uint32_t key);
 
 // Page controller interface implementation
 static const page_controller_t espnow_controller = {
@@ -84,6 +85,7 @@ static const page_controller_t espnow_controller = {
     .update = espnow_page_update,
     .destroy = espnow_page_destroy,
     .is_data_updated = espnow_page_is_data_updated,
+    .handle_key_event = espnow_page_handle_key_event,
     .name = "ESP-NOW",
     .page_id = PAGE_ESPNOW
 };
@@ -311,4 +313,32 @@ static esp_err_t destroy_espnow_page_ui(void)
     g_espnow_signal_bar = NULL;
     
     return ESP_OK;
+}
+
+// Page-specific key event handler
+static bool espnow_page_handle_key_event(uint32_t key)
+{
+    ESP_LOGI(TAG, "📡 ESP-NOW page received key: %lu", key);
+    
+    switch (key) {
+        case LV_KEY_ENTER:
+            ESP_LOGI(TAG, "📤 ESP-NOW page ENTER - Send test packet");
+            // Example: Send a test ESP-NOW packet
+            g_packets_sent++; // Simulate packet sending
+            return true;  // We handled this key
+            
+        case LV_KEY_UP:
+            ESP_LOGI(TAG, "📶 ESP-NOW page UP - Increase transmission power");
+            // Example: Adjust WiFi transmission power
+            return true;  // We handled this key
+            
+        case LV_KEY_DOWN:
+            ESP_LOGI(TAG, "📉 ESP-NOW page DOWN - Decrease transmission power");
+            // Example: Adjust WiFi transmission power
+            return true;  // We handled this key
+            
+        default:
+            ESP_LOGD(TAG, "🔹 ESP-NOW page - unhandled key: %lu", key);
+            return false;  // Let global handler process this key
+    }
 }

@@ -51,6 +51,7 @@ static esp_err_t monitor_page_create(void);
 static esp_err_t monitor_page_update(void);
 static esp_err_t monitor_page_destroy(void);
 static bool monitor_page_is_data_updated(void);
+static bool monitor_page_handle_key_event(uint32_t key);
 
 // Page controller interface implementation
 static const page_controller_t monitor_controller = {
@@ -59,6 +60,7 @@ static const page_controller_t monitor_controller = {
     .update = monitor_page_update, 
     .destroy = monitor_page_destroy,
     .is_data_updated = monitor_page_is_data_updated,
+    .handle_key_event = monitor_page_handle_key_event,
     .name = "Monitor",
     .page_id = PAGE_MONITOR
 };const page_controller_t* get_monitor_page_controller(void)
@@ -288,4 +290,32 @@ static esp_err_t destroy_monitor_page_ui(void)
     g_monitor_status_label = NULL;
     
     return ESP_OK;
+}
+
+// Page-specific key event handler
+static bool monitor_page_handle_key_event(uint32_t key)
+{
+    ESP_LOGI(TAG, "📊 Monitor page received key: %lu", key);
+    
+    switch (key) {
+        case LV_KEY_ENTER:
+            ESP_LOGI(TAG, "⚡ Monitor page ENTER - Toggle power info display");
+            // Example: Toggle between detailed and simple power display
+            // This is just a demonstration - actual implementation would modify UI
+            return true;  // We handled this key
+            
+        case LV_KEY_UP:
+            ESP_LOGI(TAG, "⬆️ Monitor page UP - Increase brightness/contrast");
+            // Example: Adjust display brightness
+            return true;  // We handled this key
+            
+        case LV_KEY_DOWN:
+            ESP_LOGI(TAG, "⬇️ Monitor page DOWN - Decrease brightness/contrast");
+            // Example: Adjust display brightness
+            return true;  // We handled this key
+            
+        default:
+            ESP_LOGD(TAG, "🔹 Monitor page - unhandled key: %lu", key);
+            return false;  // Let global handler process this key
+    }
 }

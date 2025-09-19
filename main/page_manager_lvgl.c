@@ -51,6 +51,14 @@ static void screen_key_event_cb(lv_event_t *e)
     uint32_t key = lv_event_get_key(e);
     ESP_LOGI(TAG, "🏠 Screen-level key event: %lu", key);
     
+    // First, check if current page wants to handle this key
+    bool page_handled = page_manager_handle_key_event(key);
+    if (page_handled) {
+        ESP_LOGI(TAG, "✅ Key %lu handled by current page", key);
+        return;  // Page handled it, we're done
+    }
+    
+    // Page didn't handle it, process global navigation keys
     if (key == LV_KEY_RIGHT) {
         ESP_LOGI(TAG, "🚀 Screen RIGHT key - navigating to next page");
         
@@ -63,10 +71,10 @@ static void screen_key_event_cb(lv_event_t *e)
             ESP_LOGW(TAG, "❌ Failed to navigate to next page: %s", esp_err_to_name(ret));
         }
     } else if (key == LV_KEY_ENTER) {
-        ESP_LOGI(TAG, "⭐ Screen ENTER key - page-specific action (not implemented)");
-        // For now, just log. Page-specific actions can be added later.
+        ESP_LOGI(TAG, "⭐ Screen ENTER key - page-specific action (not implemented globally)");
+        // This could be used for global actions if needed
     } else {
-        ESP_LOGI(TAG, "🔹 Screen other key: %lu", key);
+        ESP_LOGI(TAG, "🔹 Screen unhandled key: %lu", key);
     }
 }
 
