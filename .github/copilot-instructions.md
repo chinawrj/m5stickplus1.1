@@ -164,17 +164,19 @@ graph TD
 ### 1. Power Management Safety First
 - **ALWAYS** use safe power management APIs from `axp192.h`
 - **NEVER** use direct voltage setting functions outside of `axp192.c`
+- **CRITICAL for BUZZER**: The passive buzzer on GPIO2 requires `axp192_power_grove_5v(true)` (EXTEN=5.0V) to function properly. Without this 5V power rail, the buzzer will initialize successfully but produce no audible sound.
 - Follow official M5StickC Plus power specifications:
   - LDO3: 3.0V (TFT Display IC)
   - LDO2: 3.3V (TFT Backlight)  
   - LDO0: 3.3V (Microphone)
   - DCDC1: 3.3V (ESP32 Main)
-  - EXTEN: 5.0V (GROVE Port)
+  - EXTEN: 5.0V (GROVE Port) - **REQUIRED FOR BUZZER OPERATION**
 
 ```c
 // ✅ CORRECT: Use safe power APIs
 axp192_power_tft_display(true);      // Automatically uses 3.0V
 axp192_power_tft_backlight(true);    // Automatically uses 3.3V
+axp192_power_grove_5v(true);         // REQUIRED for buzzer operation
 
 // ❌ WRONG: Direct voltage control (avoid)
 axp192_set_ldo3_voltage(3000);       // Dangerous if incorrect value
@@ -216,6 +218,34 @@ ret = esp_lcd_panel_mirror(panel_handle, false, true);  // Y-axis mirror
 ret = esp_lcd_panel_swap_xy(panel_handle, true);  // Swap for landscape
 ```
 
+### 4. Buzzer Operation Requirements
+- **CRITICAL POWER DEPENDENCY**: M5StickC Plus 1.1 buzzer **MUST** have `axp192_power_grove_5v(true)` enabled
+- **Power Sequence**: Enable 5V GROVE (EXTEN) **before** initializing buzzer
+- **Hardware Design**: Passive buzzer on GPIO2 requires 5V rail for proper operation
+- **Debugging**: Buzzer will initialize successfully but produce no sound without 5V power
+
+```c
+// ✅ CORRECT: Buzzer initialization sequence
+esp_err_t buzzer_system_init(void) {
+    // 1. Enable required power rail FIRST
+    ESP_ERROR_CHECK(axp192_power_grove_5v(true));
+    vTaskDelay(pdMS_TO_TICKS(100));  // Power stabilization
+    
+    // 2. Initialize buzzer after power is stable
+    ESP_ERROR_CHECK(buzzer_init());
+    
+    return ESP_OK;
+}
+
+// ❌ WRONG: Missing power management
+esp_err_t buzzer_init(void) {
+    // This will fail silently without axp192_power_grove_5v(true)
+    ledc_timer_config(&ledc_timer);
+    ledc_channel_config(&ledc_channel);
+    return ESP_OK;
+}
+```
+
 ## File Organization & Responsibilities
 
 ### Core Hardware Modules
@@ -224,7 +254,7 @@ ret = esp_lcd_panel_swap_xy(panel_handle, true);  // Swap for landscape
 - `lvgl_helper.c/.h` - LVGL integration layer with power management
 - `button.c/.h` - GPIO button handling with interrupt support
 - `red_led.c/.h` - Status LED control with patterns
-- `buzzer.c/.h` - Audio output management
+- `buzzer.c/.h` - Audio output management (**CRITICAL**: Requires `axp192_power_grove_5v(true)` for proper operation)
 
 ### Application Layer
 - `espnow_example_main.c` - Main application with task orchestration
@@ -296,8 +326,15 @@ void hardware_self_test(void) {
     assert(axp192_power_tft_display(true) == ESP_OK);
     assert(axp192_power_tft_backlight(true) == ESP_OK);
     
+    // CRITICAL: Enable 5V GROVE for buzzer operation
+    assert(axp192_power_grove_5v(true) == ESP_OK);
+    vTaskDelay(pdMS_TO_TICKS(100));  // Power stabilization
+    
     // Test display initialization
     assert(st7789_lcd_init() == ESP_OK);
+    
+    // Test buzzer initialization (requires 5V GROVE power)
+    assert(buzzer_init() == ESP_OK);
     
     // Test LVGL integration
     assert(lvgl_init_with_lcd_panel(NULL) == ESP_OK);
