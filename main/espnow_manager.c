@@ -304,16 +304,6 @@ static void espnow_send_cb(const esp_now_send_info_t *tx_info, esp_now_send_stat
         return;
     }
     
-    // Check if this is a broadcast to our broadcast MAC (device discovery)
-    bool is_discovery_broadcast = (memcmp(tx_info->des_addr, s_broadcast_mac, ESP_NOW_ETH_ALEN) == 0);
-    
-    if (is_discovery_broadcast && s_discovery_param) {
-        // Notify device discovery task that send completed
-        s_discovery_param->send_completed = true;
-        ESP_LOGD(TAG, "🔍 Discovery send callback: %s", 
-                 (status == ESP_NOW_SEND_SUCCESS) ? "SUCCESS" : "FAILED");
-    }
-    
     evt.id = EXAMPLE_ESPNOW_SEND_CB;
     memcpy(send_cb->mac_addr, tx_info->des_addr, ESP_NOW_ETH_ALEN);
     send_cb->status = status;
@@ -771,8 +761,18 @@ static void espnow_recv_only_task(void *pvParameter)
         switch (evt.id) {
             case EXAMPLE_ESPNOW_SEND_CB:
             {
-                // Just log send callbacks but don't trigger new sends
                 example_espnow_event_send_cb_t *send_cb = &evt.info.send_cb;
+                
+                // Check if this is a broadcast to our broadcast MAC (device discovery)
+                bool is_discovery_broadcast = (memcmp(send_cb->mac_addr, s_broadcast_mac, ESP_NOW_ETH_ALEN) == 0);
+                
+                if (is_discovery_broadcast && s_discovery_param) {
+                    // Notify device discovery task that send completed
+                    s_discovery_param->send_completed = true;
+                    ESP_LOGD(TAG, "🔍 Discovery send callback: %s", 
+                             (send_cb->status == ESP_NOW_SEND_SUCCESS) ? "SUCCESS" : "FAILED");
+                }
+                
                 ESP_LOGD(TAG, "📤 Send callback: "MACSTR", status: %d", 
                          MAC2STR(send_cb->mac_addr), send_cb->status);
                 break;
