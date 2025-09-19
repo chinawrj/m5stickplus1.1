@@ -6,7 +6,7 @@ You are an AI coding assistant specializing in ESP-IDF embedded development for 
 
 **Hardware Platform**: M5StickC Plus 1.1 with ESP32-PICO-D4  
 **Framework**: ESP-IDF 5.5.1  
-**GUI Library**: LVGL 8.4.0  
+**GUI Library**: LVGL 9.3.0  
 **Primary Components**: AXP192 power management, ST7789v2 TFT display (1.14", 135x240), MPU6886 IMU, buttons, LEDs, audio  
 
 ## Development Environment Setup
@@ -49,11 +49,115 @@ source ~/esp/esp-idf/export.sh && idf.py fullclean
 ```
 
 **Important Notes**:
-- Always use baud rate 500K for optimal communication with M5StickC Plus
+- Always use baud rate 1500000 for optimal flashing with M5StickC Plus
 - M5StickC Plus supports multiple baud rates: 115200, 250K, 500K, 750K, 1500K bps
-- 500K provides faster flashing while maintaining stability
+- 1500000 provides faster flashing while maintaining stability
 - The USB port typically appears as `/dev/cu.usbserial-*` on macOS
 - Activate ESP-IDF environment in every terminal session before using `idf.py`
+
+## 🔴 MANDATORY Code Change Verification Process
+
+**ALL CODE CHANGES MUST FOLLOW THIS STRICT VERIFICATION WORKFLOW:**
+
+### 1. Build Verification (Required)
+Every code modification MUST be built successfully before proceeding:
+```bash
+source ~/esp/esp-idf/export.sh && idf.py build
+```
+- ✅ Build must complete without errors
+- ⚠️ Warnings should be addressed if possible
+- 🚫 Do NOT proceed if build fails
+
+### 2. Flash Verification (Required)
+After successful build, ALL code changes MUST be flashed to device:
+```bash
+source ~/esp/esp-idf/export.sh && idf.py -b 1500000 flash
+```
+- ✅ Flash must complete successfully
+- ✅ Device must restart properly
+- 🚫 Do NOT proceed if flash fails or device doesn't boot
+
+### 3. Monitor Testing & User Confirmation (Required)
+ALL code changes MUST be verified through monitor testing with proper terminal management:
+
+**Monitor Terminal Management Rules:**
+- 🚫 **ALWAYS** close any existing monitor terminals before flash/monitor operations
+- 🆕 **ALWAYS** create a NEW background terminal for each monitor session
+- 🔄 Use `isBackground=true` when starting monitor to avoid blocking operations
+- 📊 Use `get_terminal_output(id)` to retrieve monitor output from background terminal
+
+**Monitor Process:**
+```bash
+# 1. Monitor command (always run as background process)
+source ~/esp/esp-idf/export.sh && idf.py -b 115200 monitor
+```
+
+**Testing Requirements:**
+- 📱 If hardware interaction is needed (buttons, display, sensors), explicitly request user assistance:
+  - "Please press Button A to test the interrupt handler"
+  - "Please verify the display shows the LVGL demo"
+  - "Please check if the LED blinks 3 times"
+- 📝 Document expected behavior vs actual behavior
+- ✅ **CRITICAL**: Must receive explicit user confirmation that test results are acceptable
+- 🚫 **NEVER** proceed to git commit without user's explicit approval of test results
+
+Example verification dialogue:
+```
+AI: "Closing any existing monitor terminals and starting fresh monitor session..."
+
+AI: "The code has been built and flashed successfully. Starting new background monitor terminal..."
+
+AI: "Monitor is running in background. Please test the following:
+1. Press Button A - you should see 'Button A pressed' in the log
+2. Press Button B - the red LED should toggle
+3. Confirm the display shows the menu correctly
+
+Checking monitor output now..."
+
+[AI retrieves monitor output using get_terminal_output]
+
+AI: "Monitor shows device boot successful. After your hardware testing, please confirm: Are all test results acceptable? (yes/no)"
+
+User: "yes"
+
+AI: "Great! All tests passed. Closing monitor terminal and proceeding with git commit..."
+```
+
+### 4. Git Commit (Only After Verification)
+**ONLY** after receiving explicit user confirmation of successful testing:
+
+```bash
+# Git commit MUST use English language
+git add <modified files>
+git commit -m "feat: add button interrupt handler for menu navigation"
+```
+
+**Git Commit Rules:**
+- 🇬🇧 **MUST** use English language only
+- Follow conventional commits format:
+  - `feat:` for new features
+  - `fix:` for bug fixes  
+  - `docs:` for documentation
+  - `refactor:` for code refactoring
+  - `test:` for test additions
+  - `chore:` for maintenance tasks
+- Include concise but descriptive message
+- Reference issue numbers if applicable
+
+### Verification Workflow Summary
+```mermaid
+graph TD
+    A[Code Change] --> B[Build]
+    B -->|Success| C[Flash]
+    B -->|Fail| A
+    C -->|Success| D[Monitor Test]
+    C -->|Fail| A
+    D --> E[Request User Testing]
+    E --> F{User Confirms OK?}
+    F -->|Yes| G[Git Commit in English]
+    F -->|No| A
+    G --> H[Complete]
+```
 
 ## Architecture & Design Principles
 
@@ -101,7 +205,7 @@ static void lvgl_init_task(void *pvParameters) {
   - Resolution: 135x240 pixels
   - Screen Size: 1.14 inch TFT LCD
   - Panel offset: X=52, Y=40 (required for proper alignment)
-  - Color format: RGB565 with byte swap (`CONFIG_LV_COLOR_16_SWAP=y`)
+  - Color format: RGB565 with 16-bit depth (`CONFIG_LV_COLOR_DEPTH=16`)
   - SPI frequency: 10MHz (stable) or 20MHz (higher performance)
   - Rotation: Landscape mode (`disp_drv.rotated = 1`)
 
@@ -128,7 +232,7 @@ ret = esp_lcd_panel_swap_xy(panel_handle, true);  // Swap for landscape
 
 ### Configuration Files
 - `sdkconfig` - ESP-IDF project configuration with LVGL optimizations
-- `idf_component.yml` - Component dependencies (LVGL 8.x)
+- `idf_component.yml` - Component dependencies (LVGL 9.x)
 - `CMakeLists.txt` - Build system configuration
 
 ## Coding Standards & Patterns
@@ -157,36 +261,9 @@ esp_err_t function_name(void) {
 }
 ```
 
-### 2. Hardware Initialization Sequence
-```c
-void app_main(void) {
-    // 1. Basic ESP-IDF initialization
-    esp_err_t ret = nvs_flash_init();
-    ESP_ERROR_CHECK(ret);
-    
-    // 2. Power management first
-    ESP_ERROR_CHECK(axp192_init());
-    
-    // 3. Hardware peripherals
-    ESP_ERROR_CHECK(red_led_init());
-    ESP_ERROR_CHECK(button_init());
-    ESP_ERROR_CHECK(buzzer_init());
-    
-    // 4. Start hardware demo tasks
-    xTaskCreate(axp192_monitor_task, "axp192_monitor", 8192, NULL, 5, NULL);
-    
-    // 5. LVGL initialization in separate task (thread safety)
-    xTaskCreate(lvgl_init_task, "lvgl_init", 8192, NULL, 4, NULL);
-    
-    // 6. Network/application features last
-    example_wifi_init();
-    example_espnow_init();
-}
-```
-
 ### 3. Memory Management
 - Use appropriate stack sizes: 8192 bytes for LVGL tasks, 4096 for simple tasks
-- Configure LVGL memory: `CONFIG_LV_MEM_SIZE_KILOBYTES=64`
+- Configure LVGL memory: `CONFIG_LV_MEM_SIZE_KILOBYTES=32`
 - Use static buffers for display: `lv_color_t lvgl_disp_buf[SIZE/2]`
 
 ## Hardware-Specific Guidelines
@@ -204,22 +281,6 @@ void app_main(void) {
 | TFT RST | 18 | Output | Hardware reset |
 | I2C SDA | 21 | I2C data | AXP192, MPU6886 |
 | I2C SCL | 22 | I2C clock | 100kHz standard |
-
-### Display Color Examples
-```c
-// Use these proven color definitions
-#define COLOR_BLACK   0x0000
-#define COLOR_WHITE   0xFFFF
-#define COLOR_RED     0xF800
-#define COLOR_GREEN   0x07E0
-#define COLOR_BLUE    0x001F
-#define COLOR_YELLOW  0xFFE0
-#define COLOR_CYAN    0x07FF
-#define COLOR_MAGENTA 0xF81F
-
-// Convert RGB888 to RGB565
-uint16_t custom_color = st7789_rgb888_to_rgb565(255, 128, 64);
-```
 
 ## Debug & Testing Strategies
 
