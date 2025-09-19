@@ -21,6 +21,24 @@ typedef enum {
     PAGE_COUNT           // Total number of pages
 } page_id_t;
 
+/**
+ * @brief Page controller interface
+ * Provides standardized interface for modular page management
+ */
+typedef struct {
+    // Page lifecycle functions
+    esp_err_t (*create)(void);          // Create page UI elements
+    esp_err_t (*update)(void);          // Update page data display
+    esp_err_t (*destroy)(void);         // Clean up page resources
+    
+    // Data state management
+    bool (*is_data_updated)(void);      // Check if page data needs update (atomically clears flag)
+    
+    // Page information
+    const char *name;                   // Page display name
+    page_id_t page_id;                  // Page identifier
+} page_controller_t;
+
 // Page navigation direction
 typedef enum {
     NAV_NEXT = 0,        // Navigate to next page

@@ -238,6 +238,8 @@ bool system_monitor_is_data_updated(void) {
     bool updated = false;
     if (xSemaphoreTake(g_data_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         updated = g_data_updated;
+        // Atomically clear the flag to avoid race conditions
+        g_data_updated = false;
         xSemaphoreGive(g_data_mutex);
     }
     return updated;
