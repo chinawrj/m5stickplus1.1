@@ -308,6 +308,202 @@ esp_err_t espnow_manager_get_stats(espnow_stats_t *stats)
     return ESP_OK;
 }
 
+esp_err_t espnow_manager_get_device_info(int device_index, espnow_device_info_t *device_info)
+{
+    if (device_info == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (device_index < 0 || device_index >= MAX_TLV_DEVICES) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (g_tlv_mutex == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    // Take mutex for thread safety
+    if (xSemaphoreTake(g_tlv_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
+    
+    esp_err_t result = ESP_ERR_NOT_FOUND;
+    
+    // Check if device at index is available and in use
+    if (g_tlv_devices[device_index].in_use) {
+        const device_tlv_storage_t *device = &g_tlv_devices[device_index];
+        
+        // Initialize device_info structure
+        memset(device_info, 0, sizeof(espnow_device_info_t));
+        
+        // Copy basic device information
+        memcpy(device_info->mac_address, device->mac_address, ESP_NOW_ETH_ALEN);
+        strncpy(device_info->device_name, device->device_name, sizeof(device_info->device_name) - 1);
+        device_info->is_available = true;
+        device_info->last_seen = device->last_seen;
+        device_info->entry_count = device->entry_count;
+        
+        // Initialize with default values
+        device_info->rssi = -70; // Default RSSI
+        device_info->uptime_seconds = 0;
+        device_info->ac_voltage = 0.0f;
+        device_info->ac_current = 0.0f;
+        device_info->ac_power = 0.0f;
+        device_info->ac_power_factor = 0.0f;
+        device_info->ac_frequency = 0.0f;
+        device_info->status_flags = 0;
+        device_info->error_code = 0;
+        device_info->temperature = 0.0f;
+        device_info->free_memory_kb = 0;
+        
+        // Parse TLV entries to extract device information
+        for (int i = 0; i < MAX_TLV_ENTRIES_PER_DEVICE; i++) {
+            const stored_tlv_entry_t *entry = &device->tlv_entries[i];
+            if (!entry->valid || entry->length == 0) {
+                continue;
+            }
+            
+            switch (entry->type) {
+                case TLV_TYPE_UPTIME:
+                    if (entry->length == 4) {
+                        // Convert from big-endian
+                        device_info->uptime_seconds = (entry->value[0] << 24) | 
+                                                    (entry->value[1] << 16) | 
+                                                    (entry->value[2] << 8) | 
+                                                     entry->value[3];
+                    }
+                    break;
+                    
+                case TLV_TYPE_DEVICE_ID:
+                    if (entry->length > 0 && entry->length < sizeof(device_info->device_id)) {
+                        memcpy(device_info->device_id, entry->value, entry->length);
+                        device_info->device_id[entry->length] = '\0';
+                    }
+                    break;
+                    
+                case TLV_TYPE_FIRMWARE_VER:
+                    if (entry->length > 0 && entry->length < sizeof(device_info->firmware_version)) {
+                        memcpy(device_info->firmware_version, entry->value, entry->length);
+                        device_info->firmware_version[entry->length] = '\0';
+                    }
+                    break;
+                    
+                case TLV_TYPE_COMPILE_TIME:
+                    if (entry->length > 0 && entry->length < sizeof(device_info->compile_time)) {
+                        memcpy(device_info->compile_time, entry->value, entry->length);
+                        device_info->compile_time[entry->length] = '\0';
+                    }
+                    break;
+                    
+                case TLV_TYPE_AC_VOLTAGE:
+                    if (entry->length == 4) {
+                        // IEEE 754 float32 in big-endian format
+                        uint32_t float_bits = (entry->value[0] << 24) | 
+                                            (entry->value[1] << 16) | 
+                                            (entry->value[2] << 8) | 
+                                             entry->value[3];
+                        memcpy(&device_info->ac_voltage, &float_bits, sizeof(float));
+                    }
+                    break;
+                    
+                case TLV_TYPE_AC_CURRENT:
+                    if (entry->length == 4) {
+                        // Convert from milliamperes (int32_t big-endian) to amperes
+                        int32_t milliamps = (int32_t)((entry->value[0] << 24) | 
+                                                     (entry->value[1] << 16) | 
+                                                     (entry->value[2] << 8) | 
+                                                      entry->value[3]);
+                        device_info->ac_current = milliamps / 1000.0f;
+                    }
+                    break;
+                    
+                case TLV_TYPE_AC_POWER:
+                    if (entry->length == 4) {
+                        // Convert from milliwatts (int32_t big-endian) to watts
+                        int32_t milliwatts = (int32_t)((entry->value[0] << 24) | 
+                                                      (entry->value[1] << 16) | 
+                                                      (entry->value[2] << 8) | 
+                                                       entry->value[3]);
+                        device_info->ac_power = milliwatts / 1000.0f;
+                    }
+                    break;
+                    
+                case TLV_TYPE_AC_POWER_FACTOR:
+                    if (entry->length == 4) {
+                        // IEEE 754 float32 in big-endian format
+                        uint32_t float_bits = (entry->value[0] << 24) | 
+                                            (entry->value[1] << 16) | 
+                                            (entry->value[2] << 8) | 
+                                             entry->value[3];
+                        memcpy(&device_info->ac_power_factor, &float_bits, sizeof(float));
+                    }
+                    break;
+                    
+                case TLV_TYPE_AC_FREQUENCY:
+                    if (entry->length == 4) {
+                        // IEEE 754 float32 in big-endian format
+                        uint32_t float_bits = (entry->value[0] << 24) | 
+                                            (entry->value[1] << 16) | 
+                                            (entry->value[2] << 8) | 
+                                             entry->value[3];
+                        memcpy(&device_info->ac_frequency, &float_bits, sizeof(float));
+                    }
+                    break;
+                    
+                case TLV_TYPE_STATUS_FLAGS:
+                    if (entry->length == 2) {
+                        device_info->status_flags = (entry->value[0] << 8) | entry->value[1];
+                    }
+                    break;
+                    
+                case TLV_TYPE_ERROR_CODE:
+                    if (entry->length == 2) {
+                        device_info->error_code = (entry->value[0] << 8) | entry->value[1];
+                    }
+                    break;
+                    
+                case TLV_TYPE_TEMPERATURE:
+                    if (entry->length == 4) {
+                        // IEEE 754 float32 in big-endian format
+                        uint32_t float_bits = (entry->value[0] << 24) | 
+                                            (entry->value[1] << 16) | 
+                                            (entry->value[2] << 8) | 
+                                             entry->value[3];
+                        memcpy(&device_info->temperature, &float_bits, sizeof(float));
+                    }
+                    break;
+                    
+                default:
+                    // Unknown TLV type, skip
+                    break;
+            }
+        }
+        
+        // Estimate free memory based on uptime (simple heuristic for demonstration)
+        if (device_info->uptime_seconds > 0) {
+            // Assume devices start with ~64KB and slowly consume memory
+            device_info->free_memory_kb = 64 - (device_info->uptime_seconds / 3600);
+            if (device_info->free_memory_kb < 16) {
+                device_info->free_memory_kb = 16; // Minimum reasonable value
+            }
+        } else {
+            device_info->free_memory_kb = 45; // Default value
+        }
+        
+        result = ESP_OK;
+        
+        ESP_LOGD(TAG, "📊 Device info retrieved for index %d: MAC=" MACSTR ", entries=%d", 
+                device_index, MAC2STR(device_info->mac_address), device_info->entry_count);
+    } else {
+        ESP_LOGD(TAG, "📊 Device at index %d not available or not in use", device_index);
+    }
+    
+    // Release mutex
+    xSemaphoreGive(g_tlv_mutex);
+    
+    return result;
+}
+
 esp_err_t espnow_manager_send_test_packet(void)
 {
     if (!s_espnow_running) {

@@ -66,11 +66,26 @@ static void load_page(page_id_t page_id)
         return;
     }
     
-    // Get page controller
-    const page_controller_t *controller = g_page_controllers[page_id];
-    if (!controller) {
+    // Get new page controller
+    const page_controller_t *new_controller = g_page_controllers[page_id];
+    if (!new_controller) {
         ESP_LOGE(TAG, "No controller registered for page %d", page_id);
         return;
+    }
+    
+    // Destroy current page before switching (if different page and has destroy function)
+    if (g_current_page != page_id && g_current_page < PAGE_COUNT && g_page_controllers[g_current_page]) {
+        const page_controller_t *current_controller = g_page_controllers[g_current_page];
+        if (current_controller->destroy) {
+            ESP_LOGI(TAG, "Destroying current page %s before switching...", current_controller->name);
+            esp_err_t ret = current_controller->destroy();
+            if (ret != ESP_OK) {
+                ESP_LOGW(TAG, "Failed to destroy page %s: %s", current_controller->name, esp_err_to_name(ret));
+                // Continue with page switch even if destroy fails
+            } else {
+                ESP_LOGI(TAG, "Page %s destroyed successfully", current_controller->name);
+            }
+        }
     }
     
     // Get the active screen
@@ -79,20 +94,20 @@ static void load_page(page_id_t page_id)
     // Clean all content from screen
     lv_obj_clean(scr);
     
-    ESP_LOGI(TAG, "Creating %s page...", controller->name);
+    ESP_LOGI(TAG, "Creating %s page...", new_controller->name);
     
     // Create page using its controller
     esp_err_t ret = ESP_FAIL;
-    if (controller->create) {
-        ret = controller->create();
+    if (new_controller->create) {
+        ret = new_controller->create();
     }
     
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "%s page created successfully", controller->name);
+        ESP_LOGI(TAG, "%s page created successfully", new_controller->name);
         g_current_page = page_id;
         ESP_LOGI(TAG, "Page %d loaded successfully (direct switch)", page_id);
     } else {
-        ESP_LOGE(TAG, "Failed to create %s page: %s", controller->name, esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Failed to create %s page: %s", new_controller->name, esp_err_to_name(ret));
     }
 }
 

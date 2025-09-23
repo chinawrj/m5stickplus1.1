@@ -545,13 +545,50 @@ static esp_err_t espnow_node_detail_update(void)
 {
     ESP_LOGD(TAG, "Updating ESP-NOW node detail page...");
     
+    // Get latest device information from ESP-NOW manager (first device at index 0)
+    espnow_device_info_t device_info = {0};
+    bool have_real_data = false;
+    
+    if (espnow_manager_get_device_info(0, &device_info) == ESP_OK) {
+        // Update global node data with real device information
+        memcpy(g_node_data.mac_address, device_info.mac_address, 6);
+        g_node_data.rssi = device_info.rssi;
+        g_node_data.uptime_seconds = device_info.uptime_seconds;
+        g_node_data.ac_voltage = device_info.ac_voltage;
+        g_node_data.ac_current = device_info.ac_current;
+        g_node_data.ac_power = device_info.ac_power;
+        g_node_data.power_factor = device_info.ac_power_factor;
+        g_node_data.temperature = device_info.temperature;
+        g_node_data.free_memory_kb = device_info.free_memory_kb;
+        g_node_data.error_code = device_info.error_code;
+        
+        // Update string fields if available
+        if (strlen(device_info.device_id) > 0) {
+            strncpy(g_node_data.device_id, device_info.device_id, sizeof(g_node_data.device_id) - 1);
+        }
+        if (strlen(device_info.firmware_version) > 0) {
+            strncpy(g_node_data.firmware_version, device_info.firmware_version, sizeof(g_node_data.firmware_version) - 1);
+        }
+        if (strlen(device_info.compile_time) > 0) {
+            strncpy(g_node_data.compile_time, device_info.compile_time, sizeof(g_node_data.compile_time) - 1);
+        }
+        
+        have_real_data = true;
+        ESP_LOGD(TAG, "📊 Using real device data: MAC=" MACSTR ", entries=%d, uptime=%lu", 
+                MAC2STR(device_info.mac_address), device_info.entry_count, device_info.uptime_seconds);
+    } else {
+        ESP_LOGD(TAG, "📊 No real device data available, using demo data");
+    }
+    
     // Update network information (Device ID and RSSI)
     if (g_espnow_node_detail.network_row_label != NULL) {
         char network_text[80];
         snprintf(network_text, sizeof(network_text), 
-                 "ID:%s | RSSI:%d",
+                 "%s%s | RSSI:%d%s",
+                 have_real_data ? "🔗" : "📍",  // Icon indicates real vs demo data
                  g_node_data.device_id,
-                 g_node_data.rssi);
+                 g_node_data.rssi,
+                 have_real_data ? "" : " (demo)");
         lv_label_set_text(g_espnow_node_detail.network_row_label, network_text);
     }
     
@@ -559,10 +596,11 @@ static esp_err_t espnow_node_detail_update(void)
     if (g_espnow_node_detail.electrical_row_label != NULL) {
         char electrical_text[80];
         snprintf(electrical_text, sizeof(electrical_text), 
-                 "%.1fV | %.2fA | %.0fW",
+                 "%.1fV | %.2fA | %.0fW%s",
                  g_node_data.ac_voltage,
                  g_node_data.ac_current,
-                 g_node_data.ac_power);
+                 g_node_data.ac_power,
+                 have_real_data ? "" : " (demo)");
         lv_label_set_text(g_espnow_node_detail.electrical_row_label, electrical_text);
     }
     
@@ -580,7 +618,8 @@ static esp_err_t espnow_node_detail_update(void)
         lv_label_set_text(g_espnow_node_detail.system_row_label, system_text);
     }
     
-    ESP_LOGD(TAG, "ESP-NOW node detail page updated successfully");
+    ESP_LOGD(TAG, "ESP-NOW node detail page updated successfully (%s)", 
+             have_real_data ? "real data" : "demo data");
     return ESP_OK;
 }
 
