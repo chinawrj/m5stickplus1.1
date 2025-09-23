@@ -11,6 +11,13 @@
 
 static const char *TAG = "ESPNOW_PAGE";
 
+// ESP-NOW subpage identifiers for future expansion
+typedef enum {
+    ESPNOW_SUBPAGE_OVERVIEW = 0,    // Overview/statistics subpage (current default)
+    ESPNOW_SUBPAGE_NODE_DETAIL,     // Node detail subpage (future)
+    ESPNOW_SUBPAGE_COUNT            // Total number of subpages
+} espnow_subpage_id_t;
+
 // ESP-NOW page UI objects structure for better organization and debugging
 typedef struct {
     lv_obj_t *uptime_label;     // System uptime display
@@ -24,6 +31,9 @@ typedef struct {
 
 // Global UI overview structure
 static espnow_overview_t g_espnow_overview = {0};
+
+// ESP-NOW subpage management
+static espnow_subpage_id_t g_current_subpage = ESPNOW_SUBPAGE_OVERVIEW;
 
 // ESP-NOW data state management
 static atomic_bool g_espnow_data_updated = ATOMIC_VAR_INIT(false);
@@ -89,6 +99,12 @@ static esp_err_t espnow_page_destroy(void);
 static bool espnow_page_is_data_updated(void);
 static bool espnow_page_handle_key_event(uint32_t key);
 
+// Subpage management functions
+static esp_err_t espnow_subpage_switch(espnow_subpage_id_t subpage_id);
+static esp_err_t espnow_subpage_create_current(void);
+static esp_err_t espnow_subpage_update_current(void);
+static esp_err_t espnow_subpage_destroy_current(void);
+
 // Page controller interface implementation
 static const page_controller_t espnow_controller = {
     .init = espnow_page_init,
@@ -112,6 +128,9 @@ static esp_err_t espnow_page_init(void)
     
     // Reset UI object pointers in overview structure
     memset(&g_espnow_overview, 0, sizeof(espnow_overview_t));
+    
+    // Initialize subpage state
+    g_current_subpage = ESPNOW_SUBPAGE_OVERVIEW;
     
     // Reset data state - atomic variable doesn't need explicit initialization
     atomic_store(&g_espnow_data_updated, false);
@@ -139,7 +158,7 @@ static esp_err_t espnow_page_create(void)
 {
     ESP_LOGI(TAG, "Creating ESP-NOW page UI...");
     
-    esp_err_t ret = espnow_overview_create();
+    esp_err_t ret = espnow_subpage_create_current();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to create ESP-NOW page UI: %s", esp_err_to_name(ret));
         return ret;
@@ -153,7 +172,7 @@ static esp_err_t espnow_page_update(void)
 {
     ESP_LOGD(TAG, "Updating ESP-NOW page data...");
     
-    esp_err_t ret = espnow_overview_update();
+    esp_err_t ret = espnow_subpage_update_current();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to update ESP-NOW page: %s", esp_err_to_name(ret));
         return ret;
@@ -167,7 +186,7 @@ static esp_err_t espnow_page_destroy(void)
 {
     ESP_LOGI(TAG, "Destroying ESP-NOW page...");
     
-    esp_err_t ret = espnow_overview_destroy();
+    esp_err_t ret = espnow_subpage_destroy_current();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to destroy ESP-NOW page: %s", esp_err_to_name(ret));
         return ret;
@@ -377,23 +396,129 @@ static bool espnow_page_handle_key_event(uint32_t key)
     
     switch (key) {
         case LV_KEY_ENTER:
-            ESP_LOGI(TAG, "📤 ESP-NOW page ENTER - Send test packet");
-            // Send a real test packet through ESP-NOW manager
-            espnow_manager_send_test_packet();
-            return true;  // We handled this key
+            // Current behavior: Send test packet
+            // Future: Will be used for subpage-specific OK actions
+            if (g_current_subpage == ESPNOW_SUBPAGE_OVERVIEW) {
+                ESP_LOGI(TAG, "📤 ESP-NOW overview ENTER - Send test packet");
+                // Send a real test packet through ESP-NOW manager
+                espnow_manager_send_test_packet();
+                return true;  // We handled this key
+            }
+            // Future subpages will handle ENTER differently
+            ESP_LOGD(TAG, "🔹 ENTER key not handled for subpage %d", g_current_subpage);
+            return false;
             
         case LV_KEY_UP:
-            ESP_LOGI(TAG, "📶 ESP-NOW page UP - Increase transmission power");
-            // Example: Adjust WiFi transmission power
-            return true;  // We handled this key
+            // Current behavior: Increase transmission power  
+            // Future: May have subpage-specific UP actions
+            if (g_current_subpage == ESPNOW_SUBPAGE_OVERVIEW) {
+                ESP_LOGI(TAG, "📶 ESP-NOW overview UP - Increase transmission power");
+                // Example: Adjust WiFi transmission power
+                return true;  // We handled this key
+            }
+            return false;
             
         case LV_KEY_DOWN:
-            ESP_LOGI(TAG, "📉 ESP-NOW page DOWN - Decrease transmission power");
-            // Example: Adjust WiFi transmission power
-            return true;  // We handled this key
+            // Current behavior: Decrease transmission power
+            // Future: May have subpage-specific DOWN actions  
+            if (g_current_subpage == ESPNOW_SUBPAGE_OVERVIEW) {
+                ESP_LOGI(TAG, "📉 ESP-NOW overview DOWN - Decrease transmission power");
+                // Example: Adjust WiFi transmission power
+                return true;  // We handled this key
+            }
+            return false;
             
+        // Future: LV_KEY_ESC or other keys for subpage switching
+        
         default:
             ESP_LOGD(TAG, "🔹 ESP-NOW page - unhandled key: %lu", key);
             return false;  // Let global handler process this key
+    }
+}
+
+// Subpage management functions implementation
+
+static esp_err_t espnow_subpage_switch(espnow_subpage_id_t subpage_id)
+{
+    if (subpage_id >= ESPNOW_SUBPAGE_COUNT) {
+        ESP_LOGE(TAG, "Invalid subpage ID: %d", subpage_id);
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (subpage_id == g_current_subpage) {
+        ESP_LOGD(TAG, "Already on subpage %d", subpage_id);
+        return ESP_OK;
+    }
+    
+    ESP_LOGI(TAG, "Switching from subpage %d to subpage %d", g_current_subpage, subpage_id);
+    
+    // Destroy current subpage
+    esp_err_t ret = espnow_subpage_destroy_current();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to destroy current subpage: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // Update current subpage
+    g_current_subpage = subpage_id;
+    
+    // Create new subpage
+    ret = espnow_subpage_create_current();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create new subpage: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    ESP_LOGI(TAG, "Subpage switch completed successfully");
+    return ESP_OK;
+}
+
+static esp_err_t espnow_subpage_create_current(void)
+{
+    switch (g_current_subpage) {
+        case ESPNOW_SUBPAGE_OVERVIEW:
+            ESP_LOGD(TAG, "Creating overview subpage");
+            return espnow_overview_create();
+            
+        case ESPNOW_SUBPAGE_NODE_DETAIL:
+            ESP_LOGD(TAG, "Creating node detail subpage (placeholder)");
+            // TODO: Implement node detail subpage creation
+            return ESP_ERR_NOT_SUPPORTED;
+            
+        default:
+            ESP_LOGE(TAG, "Unknown subpage ID: %d", g_current_subpage);
+            return ESP_ERR_INVALID_STATE;
+    }
+}
+
+static esp_err_t espnow_subpage_update_current(void)
+{
+    switch (g_current_subpage) {
+        case ESPNOW_SUBPAGE_OVERVIEW:
+            return espnow_overview_update();
+            
+        case ESPNOW_SUBPAGE_NODE_DETAIL:
+            // TODO: Implement node detail subpage update
+            return ESP_ERR_NOT_SUPPORTED;
+            
+        default:
+            ESP_LOGE(TAG, "Unknown subpage ID: %d", g_current_subpage);
+            return ESP_ERR_INVALID_STATE;
+    }
+}
+
+static esp_err_t espnow_subpage_destroy_current(void)
+{
+    switch (g_current_subpage) {
+        case ESPNOW_SUBPAGE_OVERVIEW:
+            return espnow_overview_destroy();
+            
+        case ESPNOW_SUBPAGE_NODE_DETAIL:
+            // TODO: Implement node detail subpage destruction
+            return ESP_ERR_NOT_SUPPORTED;
+            
+        default:
+            ESP_LOGE(TAG, "Unknown subpage ID: %d", g_current_subpage);
+            return ESP_ERR_INVALID_STATE;
     }
 }
