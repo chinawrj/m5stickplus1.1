@@ -10,6 +10,8 @@
 #ifndef ESPNOW_EXAMPLE_H
 #define ESPNOW_EXAMPLE_H
 
+#include <stdint.h>
+
 /* ESPNOW can work in both station and softap mode. It is configured in menuconfig. */
 #if CONFIG_ESPNOW_WIFI_MODE_STATION
 #define ESPNOW_WIFI_MODE WIFI_MODE_STA
@@ -35,6 +37,11 @@ typedef struct {
 
 typedef struct {
     uint8_t mac_addr[ESP_NOW_ETH_ALEN];
+    int8_t is_broadcast;
+    int8_t rssi;
+    int8_t rate_11bg;      //Set to -1 if not 11b/g
+    int8_t rate_11n;       //Set to -1 if not 11n/ac
+    int8_t rate_11ac;      //Set to -1 if not 11n/ac
     uint8_t *data;
     int data_len;
 } example_espnow_event_recv_cb_t;
