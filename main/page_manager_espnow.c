@@ -11,12 +11,19 @@
 
 static const char *TAG = "ESPNOW_PAGE";
 
-// ESP-NOW page UI objects - stored as static variables for updates
-static lv_obj_t *g_espnow_uptime_label = NULL;
-static lv_obj_t *g_espnow_memory_label = NULL;
-static lv_obj_t *g_espnow_status_label = NULL;
-static lv_obj_t *g_espnow_sent_label = NULL;
-static lv_obj_t *g_espnow_recv_label = NULL;
+// ESP-NOW page UI objects structure for better organization and debugging
+typedef struct {
+    lv_obj_t *uptime_label;     // System uptime display
+    lv_obj_t *memory_label;     // Free memory display
+    lv_obj_t *status_label;     // ESP-NOW status display (currently unused)
+    lv_obj_t *sent_label;       // Sent packets counter
+    lv_obj_t *recv_label;       // Received packets counter
+    lv_obj_t *title_label;      // Page title
+    lv_obj_t *mac_label;        // MAC address display
+} espnow_overview_t;
+
+// Global UI overview structure
+static espnow_overview_t g_espnow_overview = {0};
 
 // ESP-NOW data state management
 static atomic_bool g_espnow_data_updated = ATOMIC_VAR_INIT(false);
@@ -72,9 +79,9 @@ static void format_free_memory_string(char *buffer, size_t buffer_size)
 }
 
 // Internal functions
-static esp_err_t create_espnow_page_ui(void);
-static esp_err_t update_espnow_page_ui(void);
-static esp_err_t destroy_espnow_page_ui(void);
+static esp_err_t espnow_overview_create(void);
+static esp_err_t espnow_overview_update(void);
+static esp_err_t espnow_overview_destroy(void);
 static esp_err_t espnow_page_init(void);
 static esp_err_t espnow_page_create(void);
 static esp_err_t espnow_page_update(void);
@@ -103,12 +110,8 @@ static esp_err_t espnow_page_init(void)
 {
     ESP_LOGI(TAG, "Initializing ESP-NOW page module");
     
-    // Reset UI object pointers
-    g_espnow_uptime_label = NULL;
-    g_espnow_memory_label = NULL;
-    g_espnow_status_label = NULL;
-    g_espnow_sent_label = NULL;
-    g_espnow_recv_label = NULL;
+    // Reset UI object pointers in overview structure
+    memset(&g_espnow_overview, 0, sizeof(espnow_overview_t));
     
     // Reset data state - atomic variable doesn't need explicit initialization
     atomic_store(&g_espnow_data_updated, false);
@@ -136,7 +139,7 @@ static esp_err_t espnow_page_create(void)
 {
     ESP_LOGI(TAG, "Creating ESP-NOW page UI...");
     
-    esp_err_t ret = create_espnow_page_ui();
+    esp_err_t ret = espnow_overview_create();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to create ESP-NOW page UI: %s", esp_err_to_name(ret));
         return ret;
@@ -150,7 +153,7 @@ static esp_err_t espnow_page_update(void)
 {
     ESP_LOGD(TAG, "Updating ESP-NOW page data...");
     
-    esp_err_t ret = update_espnow_page_ui();
+    esp_err_t ret = espnow_overview_update();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to update ESP-NOW page: %s", esp_err_to_name(ret));
         return ret;
@@ -164,7 +167,7 @@ static esp_err_t espnow_page_destroy(void)
 {
     ESP_LOGI(TAG, "Destroying ESP-NOW page...");
     
-    esp_err_t ret = destroy_espnow_page_ui();
+    esp_err_t ret = espnow_overview_destroy();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to destroy ESP-NOW page: %s", esp_err_to_name(ret));
         return ret;
@@ -231,7 +234,7 @@ void espnow_page_notify_data_update(void)
 }
 
 // Internal UI creation function
-static esp_err_t create_espnow_page_ui(void)
+static esp_err_t espnow_overview_create(void)
 {
     // Get latest statistics from ESP-NOW manager before creating UI
     espnow_stats_t latest_stats = {0};
@@ -256,7 +259,9 @@ static esp_err_t create_espnow_page_ui(void)
     lv_obj_set_style_text_color(title, lv_color_hex(0x00FFFF), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(title, 60, 5);
-    
+    // Store in overview structure for debugging
+    g_espnow_overview.title_label = title;
+
     // MAC Address display (moved up to replace status)
     lv_obj_t *mac_label = lv_label_create(scr);
     
@@ -268,50 +273,52 @@ static esp_err_t create_espnow_page_ui(void)
     lv_obj_set_style_text_color(mac_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(mac_label, &lv_font_montserrat_18, LV_PART_MAIN);
     lv_obj_set_pos(mac_label, 10, 30);
+    // Store in overview structure for debugging
+    g_espnow_overview.mac_label = mac_label;
     
     // Send counter (moved up)
-    g_espnow_sent_label = lv_label_create(scr);
+    g_espnow_overview.sent_label = lv_label_create(scr);
     char sent_text[32];
     snprintf(sent_text, sizeof(sent_text), "Sent: %"PRIu32" packets", g_espnow_stats.packets_sent);
-    lv_label_set_text(g_espnow_sent_label, sent_text);
-    lv_obj_set_style_text_color(g_espnow_sent_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_espnow_sent_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_sent_label, 10, 52);
+    lv_label_set_text(g_espnow_overview.sent_label, sent_text);
+    lv_obj_set_style_text_color(g_espnow_overview.sent_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_espnow_overview.sent_label, &lv_font_montserrat_18, LV_PART_MAIN);
+    lv_obj_set_pos(g_espnow_overview.sent_label, 10, 52);
     
     // Receive counter (moved up)
-    g_espnow_recv_label = lv_label_create(scr);
+    g_espnow_overview.recv_label = lv_label_create(scr);
     char recv_text[32];
     snprintf(recv_text, sizeof(recv_text), "Received: %"PRIu32" packets", g_espnow_stats.packets_received);
-    lv_label_set_text(g_espnow_recv_label, recv_text);
-    lv_obj_set_style_text_color(g_espnow_recv_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_espnow_recv_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_recv_label, 10, 74);
+    lv_label_set_text(g_espnow_overview.recv_label, recv_text);
+    lv_obj_set_style_text_color(g_espnow_overview.recv_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_espnow_overview.recv_label, &lv_font_montserrat_18, LV_PART_MAIN);
+    lv_obj_set_pos(g_espnow_overview.recv_label, 10, 74);
     
     // Uptime at bottom-left
-    g_espnow_uptime_label = lv_label_create(scr);
+    g_espnow_overview.uptime_label = lv_label_create(scr);
     char uptime_text[16];
     format_uptime_string(uptime_text, sizeof(uptime_text));
-    lv_label_set_text(g_espnow_uptime_label, uptime_text);
-    lv_obj_set_style_text_color(g_espnow_uptime_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_espnow_uptime_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_opa(g_espnow_uptime_label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_uptime_label, 5, 120);
+    lv_label_set_text(g_espnow_overview.uptime_label, uptime_text);
+    lv_obj_set_style_text_color(g_espnow_overview.uptime_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_espnow_overview.uptime_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(g_espnow_overview.uptime_label, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_pos(g_espnow_overview.uptime_label, 5, 120);
     
     // Memory at bottom-right
-    g_espnow_memory_label = lv_label_create(scr);
+    g_espnow_overview.memory_label = lv_label_create(scr);
     char memory_text[16];
     format_free_memory_string(memory_text, sizeof(memory_text));
-    lv_label_set_text(g_espnow_memory_label, memory_text);
-    lv_obj_set_style_text_color(g_espnow_memory_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_espnow_memory_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_opa(g_espnow_memory_label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_memory_label, 170, 120);  // Right-aligned
+    lv_label_set_text(g_espnow_overview.memory_label, memory_text);
+    lv_obj_set_style_text_color(g_espnow_overview.memory_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_espnow_overview.memory_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(g_espnow_overview.memory_label, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_pos(g_espnow_overview.memory_label, 170, 120);  // Right-aligned
     
     return ESP_OK;
 }
 
 // Internal UI update function
-static esp_err_t update_espnow_page_ui(void)
+static esp_err_t espnow_overview_update(void)
 {
     // Get latest statistics from ESP-NOW manager
     espnow_stats_t latest_stats = {0};
@@ -321,48 +328,44 @@ static esp_err_t update_espnow_page_ui(void)
     }
     
     // Update uptime display
-    if (g_espnow_uptime_label != NULL) {
+    if (g_espnow_overview.uptime_label != NULL) {
         char uptime_text[16];
         format_uptime_string(uptime_text, sizeof(uptime_text));
-        lv_label_set_text(g_espnow_uptime_label, uptime_text);
+        lv_label_set_text(g_espnow_overview.uptime_label, uptime_text);
     }
     
     // Update memory display
-    if (g_espnow_memory_label != NULL) {
+    if (g_espnow_overview.memory_label != NULL) {
         char memory_text[16];
         format_free_memory_string(memory_text, sizeof(memory_text));
-        lv_label_set_text(g_espnow_memory_label, memory_text);
+        lv_label_set_text(g_espnow_overview.memory_label, memory_text);
     }
     
     // Update packet statistics
-    if (g_espnow_sent_label != NULL) {
+    if (g_espnow_overview.sent_label != NULL) {
         char sent_text[32];
         snprintf(sent_text, sizeof(sent_text), "Sent: %"PRIu32" packets", g_espnow_stats.packets_sent);
-        lv_label_set_text(g_espnow_sent_label, sent_text);
+        lv_label_set_text(g_espnow_overview.sent_label, sent_text);
     }
     
-    if (g_espnow_recv_label != NULL) {
+    if (g_espnow_overview.recv_label != NULL) {
         char recv_text[32];
         snprintf(recv_text, sizeof(recv_text), "Received: %"PRIu32" packets", g_espnow_stats.packets_received);
-        lv_label_set_text(g_espnow_recv_label, recv_text);
+        lv_label_set_text(g_espnow_overview.recv_label, recv_text);
     }
     
     return ESP_OK;
 }
 
 // Internal UI destruction function  
-static esp_err_t destroy_espnow_page_ui(void)
+static esp_err_t espnow_overview_destroy(void)
 {
     // Clear screen will automatically clean up all child objects
     lv_obj_t *scr = lv_scr_act();
     lv_obj_clean(scr);
     
-    // Reset object pointers
-    g_espnow_uptime_label = NULL;
-    g_espnow_memory_label = NULL;
-    g_espnow_status_label = NULL;
-    g_espnow_sent_label = NULL;
-    g_espnow_recv_label = NULL;
+    // Reset object pointers in overview structure
+    memset(&g_espnow_overview, 0, sizeof(espnow_overview_t));
     
     return ESP_OK;
 }
