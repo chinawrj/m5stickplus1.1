@@ -24,6 +24,7 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include <string.h>
+#include <inttypes.h>
 
 static const char *TAG = "ESPNOW_MGR";
 
@@ -52,6 +53,34 @@ typedef struct {
 static device_discovery_param_t *s_discovery_param = NULL;
 static TaskHandle_t s_discovery_task_handle = NULL;
 
+// TLV Device Storage Configuration
+#define MAX_TLV_DEVICES 16          // Maximum number of devices to track
+#define MAX_TLV_ENTRIES_PER_DEVICE 32  // Maximum TLV entries per device
+#define MAX_TLV_ENTRY_VALUE_SIZE 64    // Maximum value size for a single TLV entry
+
+// Individual TLV entry storage
+typedef struct {
+    uint8_t type;                   // TLV type
+    uint8_t length;                 // TLV value length
+    uint8_t value[MAX_TLV_ENTRY_VALUE_SIZE];  // TLV value data
+    uint32_t last_updated;          // Timestamp of last update (in ticks)
+    bool valid;                     // Whether this entry is valid
+} stored_tlv_entry_t;
+
+// Device TLV information storage
+typedef struct {
+    uint8_t mac_address[ESP_NOW_ETH_ALEN];  // Device MAC address
+    stored_tlv_entry_t tlv_entries[MAX_TLV_ENTRIES_PER_DEVICE];  // TLV entries for this device
+    uint16_t entry_count;           // Number of valid TLV entries
+    uint32_t last_seen;             // Last time we received data from this device
+    bool in_use;                    // Whether this device slot is in use
+    char device_name[32];           // Device friendly name (optional)
+} device_tlv_storage_t;
+
+// Global TLV device storage array
+static device_tlv_storage_t g_tlv_devices[MAX_TLV_DEVICES];
+static SemaphoreHandle_t g_tlv_mutex = NULL;  // Mutex for thread-safe access
+
 // Forward declarations
 static void espnow_wifi_init(void);
 static void espnow_send_cb(const esp_now_send_info_t *tx_info, esp_now_send_status_t status);
@@ -60,6 +89,15 @@ static int espnow_data_parse(uint8_t *data, uint16_t data_len, uint8_t *state, u
 
 // TLV helper functions
 static const char* tlv_type_to_string(uint8_t type);
+
+// TLV Device Storage Functions
+static esp_err_t tlv_storage_init(void);
+static void tlv_storage_deinit(void);
+static device_tlv_storage_t* find_device_by_mac(const uint8_t *mac_addr);
+static device_tlv_storage_t* get_or_create_device(const uint8_t *mac_addr);
+static esp_err_t store_device_tlv_data(const uint8_t *mac_addr, const uint8_t *tlv_data, size_t data_len);
+static void process_received_tlv_data(const uint8_t *mac_addr, const uint8_t *data, size_t data_len);
+static void print_device_tlv_info(const device_tlv_storage_t *device);
 
 // Device Discovery Task Functions
 static void device_discovery_data_prepare(device_discovery_param_t *param);
@@ -74,6 +112,13 @@ esp_err_t espnow_manager_init(void)
     // Reset statistics
     memset(&s_stats, 0, sizeof(s_stats));
     s_espnow_running = false;
+    
+    // Initialize TLV device storage
+    esp_err_t ret = tlv_storage_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize TLV storage: %s", esp_err_to_name(ret));
+        return ret;
+    }
     
     ESP_LOGI(TAG, "ESP-NOW Manager initialized");
     return ESP_OK;
@@ -245,6 +290,9 @@ esp_err_t espnow_manager_deinit(void)
     }
     
     esp_now_deinit();
+    
+    // Deinitialize TLV storage
+    tlv_storage_deinit();
     
     ESP_LOGI(TAG, "ESP-NOW Manager deinitialized");
     return ESP_OK;
@@ -468,30 +516,22 @@ static int espnow_data_parse(uint8_t *data, uint16_t data_len, uint8_t *state, u
         uint8_t type = data[offset];
         uint8_t length = data[offset + 1];
         
-        ESP_LOGI(TAG, "📋 TLV Entry #%d at offset %zu:", tlv_count + 1, offset);
-        ESP_LOGI(TAG, "   Type: 0x%02X (%s)", type, tlv_type_to_string(type));
-        ESP_LOGI(TAG, "   Length: %d bytes", length);
-        
         // Validate TLV entry bounds
         size_t total_entry_size = TLV_TOTAL_SIZE(length);
         if (offset + total_entry_size > data_len) {
-            ESP_LOGE(TAG, "❌ TLV entry exceeds buffer bounds:");
-            ESP_LOGE(TAG, "   Entry size: %zu, Remaining buffer: %zu", 
+            ESP_LOGE(TAG, "❌ TLV entry exceeds buffer bounds: Entry size: %zu, Remaining buffer: %zu", 
                      total_entry_size, data_len - offset);
             break;
         }
         
-        // Display value content if length > 0
+        // Parse specific known types and create one-line output
+        char value_str[128] = {0};
         if (length > 0) {
-            ESP_LOGI(TAG, "   Value (%d bytes):", length);
-            ESP_LOG_BUFFER_HEX_LEVEL(TAG, &data[offset + 2], length, ESP_LOG_INFO);
-            
-            // Parse specific known types
             switch (type) {
                 case TLV_TYPE_UPTIME:
                     if (length == 4) {
                         uint32_t uptime = TLV_UINT32_FROM_BE(&data[offset + 2]);
-                        ESP_LOGI(TAG, "   -> Uptime: %lu seconds", uptime);
+                        snprintf(value_str, sizeof(value_str), "Uptime: %" PRIu32 " seconds", uptime);
                     }
                     break;
                     
@@ -499,7 +539,7 @@ static int espnow_data_parse(uint8_t *data, uint16_t data_len, uint8_t *state, u
                     if (length == 4) {
                         float voltage;
                         TLV_FLOAT32_FROM_BE(&data[offset + 2], voltage);
-                        ESP_LOGI(TAG, "   -> AC Voltage: %.1f V", voltage);
+                        snprintf(value_str, sizeof(value_str), "AC Voltage: %.1f V", voltage);
                     }
                     break;
                     
@@ -507,7 +547,7 @@ static int espnow_data_parse(uint8_t *data, uint16_t data_len, uint8_t *state, u
                     if (length == 4) {
                         int32_t current_ma = TLV_INT32_FROM_BE(&data[offset + 2]);
                         float current_a = TLV_CURRENT_MA_TO_A(current_ma);
-                        ESP_LOGI(TAG, "   -> AC Current: %.3f A (%ld mA)", current_a, current_ma);
+                        snprintf(value_str, sizeof(value_str), "AC Current: %.3f A (%" PRId32 " mA)", current_a, current_ma);
                     }
                     break;
                     
@@ -515,7 +555,7 @@ static int espnow_data_parse(uint8_t *data, uint16_t data_len, uint8_t *state, u
                     if (length == 4) {
                         float frequency;
                         TLV_FLOAT32_FROM_BE(&data[offset + 2], frequency);
-                        ESP_LOGI(TAG, "   -> AC Frequency: %.2f Hz", frequency);
+                        snprintf(value_str, sizeof(value_str), "AC Frequency: %.2f Hz", frequency);
                     }
                     break;
                     
@@ -523,7 +563,7 @@ static int espnow_data_parse(uint8_t *data, uint16_t data_len, uint8_t *state, u
                     if (length == 4) {
                         int32_t power_mw = TLV_INT32_FROM_BE(&data[offset + 2]);
                         float power_w = TLV_POWER_MW_TO_W(power_mw);
-                        ESP_LOGI(TAG, "   -> AC Power: %.3f W (%ld mW)", power_w, power_mw);
+                        snprintf(value_str, sizeof(value_str), "AC Power: %.3f W (%" PRId32 " mW)", power_w, power_mw);
                     }
                     break;
                     
@@ -535,34 +575,39 @@ static int espnow_data_parse(uint8_t *data, uint16_t data_len, uint8_t *state, u
                         char temp_str[65] = {0}; // Max 64 chars + null terminator
                         int copy_len = (length < 64) ? length : 64;
                         memcpy(temp_str, &data[offset + 2], copy_len);
-                        ESP_LOGI(TAG, "   -> Text: \"%s\"", temp_str);
+                        snprintf(value_str, sizeof(value_str), "Text: \"%s\"", temp_str);
                     }
                     break;
                     
                 case TLV_TYPE_MAC_ADDRESS:
                     if (length == 6) {
-                        ESP_LOGI(TAG, "   -> MAC: " MACSTR, MAC2STR(&data[offset + 2]));
+                        snprintf(value_str, sizeof(value_str), "MAC: " MACSTR, MAC2STR(&data[offset + 2]));
                     }
                     break;
                     
                 case TLV_TYPE_STATUS_FLAGS:
                     if (length == 2) {
                         uint16_t flags = TLV_UINT16_FROM_BE(&data[offset + 2]);
-                        ESP_LOGI(TAG, "   -> Status Flags: 0x%04X", flags);
-                        if (flags & STATUS_FLAG_POWER_ON) ESP_LOGI(TAG, "      - POWER_ON");
-                        if (flags & STATUS_FLAG_WIFI_CONNECTED) ESP_LOGI(TAG, "      - WIFI_CONNECTED");
-                        if (flags & STATUS_FLAG_ESP_NOW_ACTIVE) ESP_LOGI(TAG, "      - ESP_NOW_ACTIVE");
-                        if (flags & STATUS_FLAG_ERROR) ESP_LOGI(TAG, "      - ERROR");
+                        char flag_details[64] = {0};
+                        if (flags & STATUS_FLAG_POWER_ON) strcat(flag_details, "PWR ");
+                        if (flags & STATUS_FLAG_WIFI_CONNECTED) strcat(flag_details, "WIFI ");
+                        if (flags & STATUS_FLAG_ESP_NOW_ACTIVE) strcat(flag_details, "ESPNOW ");
+                        if (flags & STATUS_FLAG_ERROR) strcat(flag_details, "ERR ");
+                        snprintf(value_str, sizeof(value_str), "Status Flags: 0x%04X (%s)", flags, flag_details);
                     }
                     break;
                     
                 default:
-                    ESP_LOGI(TAG, "   -> Raw data (type not specifically parsed)");
+                    snprintf(value_str, sizeof(value_str), "Raw data (%d bytes)", length);
                     break;
             }
         } else {
-            ESP_LOGI(TAG, "   Value: (empty)");
+            snprintf(value_str, sizeof(value_str), "(empty)");
         }
+        
+        // Single line output for each TLV entry
+        ESP_LOGI(TAG, "📋 TLV #%d @%zu: Type=0x%02X (%s), Len=%d, %s", 
+                 tlv_count + 1, offset, type, tlv_type_to_string(type), length, value_str);
         
         // Move to next TLV entry
         offset += total_entry_size;
@@ -728,7 +773,6 @@ static void espnow_recv_only_task(void *pvParameter)
     uint8_t recv_state = 0;
     uint16_t recv_seq = 0;
     uint32_t recv_magic = 0;
-    int ret;
     
     example_espnow_send_param_t *recv_param = (example_espnow_send_param_t *)pvParameter;
     
@@ -775,7 +819,18 @@ static void espnow_recv_only_task(void *pvParameter)
                 ESP_LOGI(TAG, "   rssi: %d dBm, 11bg: %d, 11n: %d, 11ac: %d", recv_cb->rssi, recv_cb->rate_11bg, recv_cb->rate_11n, recv_cb->rate_11ac);
                 ESP_LOG_BUFFER_HEX(TAG, recv_cb->data, recv_cb->data_len);
                 
-                ret = espnow_data_parse(recv_cb->data, recv_cb->data_len, &recv_state, &recv_seq, &recv_magic);
+                int parse_result = espnow_data_parse(recv_cb->data, recv_cb->data_len, &recv_state, &recv_seq, &recv_magic);
+                
+                // If TLV data was successfully parsed, store it indexed by MAC address
+                if (parse_result > 0) {
+                    ESP_LOGI(TAG, "✅ TLV data parsed successfully (%d entries), storing for device " MACSTR, 
+                             parse_result, MAC2STR(recv_cb->mac_addr));
+                    
+                    // Process and store the TLV data using MAC address as index
+                    process_received_tlv_data(recv_cb->mac_addr, recv_cb->data, recv_cb->data_len);
+                } else {
+                    ESP_LOGW(TAG, "⚠️ TLV parsing failed or no valid TLV data found");
+                }
                 
                 free(recv_cb->data);
                 
@@ -794,4 +849,382 @@ static void espnow_recv_only_task(void *pvParameter)
         free(recv_param);
     }
     vTaskDelete(NULL);
+}
+
+// ===== TLV DEVICE STORAGE IMPLEMENTATION =====
+
+/**
+ * @brief Initialize TLV device storage system
+ */
+static esp_err_t tlv_storage_init(void)
+{
+    ESP_LOGI(TAG, "🗂️ Initializing TLV device storage");
+    
+    // Create mutex for thread-safe access
+    g_tlv_mutex = xSemaphoreCreateMutex();
+    if (g_tlv_mutex == NULL) {
+        ESP_LOGE(TAG, "Failed to create TLV storage mutex");
+        return ESP_FAIL;
+    }
+    
+    // Initialize all device storage slots
+    for (int i = 0; i < MAX_TLV_DEVICES; i++) {
+        memset(&g_tlv_devices[i], 0, sizeof(device_tlv_storage_t));
+        g_tlv_devices[i].in_use = false;
+        g_tlv_devices[i].entry_count = 0;
+        
+        // Initialize all TLV entries as invalid
+        for (int j = 0; j < MAX_TLV_ENTRIES_PER_DEVICE; j++) {
+            g_tlv_devices[i].tlv_entries[j].valid = false;
+        }
+    }
+    
+    ESP_LOGI(TAG, "✅ TLV storage initialized (max %d devices, %d entries each)", 
+             MAX_TLV_DEVICES, MAX_TLV_ENTRIES_PER_DEVICE);
+    return ESP_OK;
+}
+
+/**
+ * @brief Deinitialize TLV device storage system
+ */
+static void tlv_storage_deinit(void)
+{
+    ESP_LOGI(TAG, "🗂️ Deinitializing TLV device storage");
+    
+    if (g_tlv_mutex != NULL) {
+        vSemaphoreDelete(g_tlv_mutex);
+        g_tlv_mutex = NULL;
+    }
+    
+    // Clear all storage
+    memset(g_tlv_devices, 0, sizeof(g_tlv_devices));
+    
+    ESP_LOGI(TAG, "✅ TLV storage deinitialized");
+}
+
+/**
+ * @brief Find device storage by MAC address
+ * @param mac_addr MAC address to search for
+ * @return Pointer to device storage or NULL if not found
+ */
+static device_tlv_storage_t* find_device_by_mac(const uint8_t *mac_addr)
+{
+    if (mac_addr == NULL) {
+        return NULL;
+    }
+    
+    for (int i = 0; i < MAX_TLV_DEVICES; i++) {
+        if (g_tlv_devices[i].in_use && 
+            memcmp(g_tlv_devices[i].mac_address, mac_addr, ESP_NOW_ETH_ALEN) == 0) {
+            return &g_tlv_devices[i];
+        }
+    }
+    
+    return NULL;
+}
+
+/**
+ * @brief Get existing device or create new device storage slot
+ * @param mac_addr MAC address of the device
+ * @return Pointer to device storage or NULL if no space available
+ */
+static device_tlv_storage_t* get_or_create_device(const uint8_t *mac_addr)
+{
+    if (mac_addr == NULL) {
+        return NULL;
+    }
+    
+    // First try to find existing device
+    device_tlv_storage_t *device = find_device_by_mac(mac_addr);
+    if (device != NULL) {
+        return device;
+    }
+    
+    // Look for an empty slot
+    for (int i = 0; i < MAX_TLV_DEVICES; i++) {
+        if (!g_tlv_devices[i].in_use) {
+            // Initialize new device slot
+            memset(&g_tlv_devices[i], 0, sizeof(device_tlv_storage_t));
+            memcpy(g_tlv_devices[i].mac_address, mac_addr, ESP_NOW_ETH_ALEN);
+            g_tlv_devices[i].in_use = true;
+            g_tlv_devices[i].entry_count = 0;
+            g_tlv_devices[i].last_seen = xTaskGetTickCount();
+            
+            // Initialize all TLV entries as invalid
+            for (int j = 0; j < MAX_TLV_ENTRIES_PER_DEVICE; j++) {
+                g_tlv_devices[i].tlv_entries[j].valid = false;
+            }
+            
+            // Generate friendly device name
+            snprintf(g_tlv_devices[i].device_name, sizeof(g_tlv_devices[i].device_name),
+                     "ESP-" MACSTR, MAC2STR(mac_addr));
+            
+            ESP_LOGI(TAG, "📋 Created new device storage: %s", g_tlv_devices[i].device_name);
+            return &g_tlv_devices[i];
+        }
+    }
+    
+    ESP_LOGW(TAG, "⚠️ No space available for new device " MACSTR, MAC2STR(mac_addr));
+    return NULL;
+}
+
+/**
+ * @brief Store TLV data for a specific device
+ * @param mac_addr MAC address of the device
+ * @param tlv_data TLV data buffer
+ * @param data_len Length of TLV data
+ * @return ESP_OK on success, ESP_FAIL on error
+ */
+static esp_err_t store_device_tlv_data(const uint8_t *mac_addr, const uint8_t *tlv_data, size_t data_len)
+{
+    if (mac_addr == NULL || tlv_data == NULL || data_len == 0 || g_tlv_mutex == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    // Take mutex for thread safety
+    if (xSemaphoreTake(g_tlv_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
+        ESP_LOGE(TAG, "Failed to take TLV storage mutex");
+        return ESP_ERR_TIMEOUT;
+    }
+    
+    esp_err_t result = ESP_OK;
+    
+    do {
+        // Get or create device storage
+        device_tlv_storage_t *device = get_or_create_device(mac_addr);
+        if (device == NULL) {
+            ESP_LOGE(TAG, "Failed to get device storage for " MACSTR, MAC2STR(mac_addr));
+            result = ESP_FAIL;
+            break;
+        }
+        
+        // Update last seen timestamp
+        device->last_seen = xTaskGetTickCount();
+        
+        // Parse TLV data and store individual entries
+        size_t offset = 0;
+        int stored_entries = 0;
+        
+        while (offset < data_len && stored_entries < MAX_TLV_ENTRIES_PER_DEVICE) {
+            // Check if we have at least 2 bytes for type and length
+            if (offset + 2 > data_len) {
+                ESP_LOGW(TAG, "Insufficient data for TLV header at offset %zu", offset);
+                break;
+            }
+            
+            uint8_t type = tlv_data[offset];
+            uint8_t length = tlv_data[offset + 1];
+            
+            // Validate TLV entry bounds
+            size_t total_entry_size = TLV_TOTAL_SIZE(length);
+            if (offset + total_entry_size > data_len) {
+                ESP_LOGE(TAG, "TLV entry exceeds buffer bounds");
+                break;
+            }
+            
+            // Check if value fits in our storage
+            if (length > MAX_TLV_ENTRY_VALUE_SIZE) {
+                ESP_LOGW(TAG, "TLV value too large (type=0x%02X, len=%d), skipping", type, length);
+                offset += total_entry_size;
+                continue;
+            }
+            
+            // Find existing entry with same type or get empty slot
+            stored_tlv_entry_t *entry = NULL;
+            
+            // First, look for existing entry with same type (update)
+            for (int i = 0; i < MAX_TLV_ENTRIES_PER_DEVICE; i++) {
+                if (device->tlv_entries[i].valid && device->tlv_entries[i].type == type) {
+                    entry = &device->tlv_entries[i];
+                    break;
+                }
+            }
+            
+            // If not found, look for empty slot (new entry)
+            if (entry == NULL) {
+                for (int i = 0; i < MAX_TLV_ENTRIES_PER_DEVICE; i++) {
+                    if (!device->tlv_entries[i].valid) {
+                        entry = &device->tlv_entries[i];
+                        device->entry_count++;
+                        break;
+                    }
+                }
+            }
+            
+            if (entry == NULL) {
+                ESP_LOGW(TAG, "No space for TLV type 0x%02X", type);
+                offset += total_entry_size;
+                continue;
+            }
+            
+            // Store TLV entry
+            entry->type = type;
+            entry->length = length;
+            if (length > 0) {
+                memcpy(entry->value, &tlv_data[offset + 2], length);
+            }
+            entry->last_updated = xTaskGetTickCount();
+            entry->valid = true;
+            
+            stored_entries++;
+            offset += total_entry_size;
+        }
+        
+        ESP_LOGI(TAG, "📊 Stored %d TLV entries for device %s (total: %d)", 
+                 stored_entries, device->device_name, device->entry_count);
+        
+    } while (0);
+    
+    // Release mutex
+    xSemaphoreGive(g_tlv_mutex);
+    
+    return result;
+}
+
+/**
+ * @brief Print detailed TLV information for a device
+ * @param device Pointer to device storage structure
+ */
+static void print_device_tlv_info(const device_tlv_storage_t *device)
+{
+    if (device == NULL || !device->in_use) {
+        return;
+    }
+    
+    ESP_LOGI(TAG, "🔍 Device TLV Info: %s (" MACSTR ")", 
+             device->device_name, MAC2STR(device->mac_address));
+    ESP_LOGI(TAG, "   Last seen: %lu ticks ago", xTaskGetTickCount() - device->last_seen);
+    ESP_LOGI(TAG, "   TLV entries: %d/%d", device->entry_count, MAX_TLV_ENTRIES_PER_DEVICE);
+    
+    int valid_entries = 0;
+    for (int i = 0; i < MAX_TLV_ENTRIES_PER_DEVICE; i++) {
+        if (device->tlv_entries[i].valid) {
+            const stored_tlv_entry_t *entry = &device->tlv_entries[i];
+            
+            // Create one-line value description
+            char value_str[128] = {0};
+            if (entry->length > 0) {
+                switch (entry->type) {
+                    case TLV_TYPE_UPTIME:
+                        if (entry->length == 4) {
+                            uint32_t uptime = TLV_UINT32_FROM_BE(entry->value);
+                            snprintf(value_str, sizeof(value_str), "Uptime: %" PRIu32 " seconds", uptime);
+                        }
+                        break;
+                        
+                    case TLV_TYPE_AC_VOLTAGE:
+                        if (entry->length == 4) {
+                            float voltage;
+                            TLV_FLOAT32_FROM_BE(entry->value, voltage);
+                            snprintf(value_str, sizeof(value_str), "AC Voltage: %.1f V", voltage);
+                        }
+                        break;
+                        
+                    case TLV_TYPE_AC_CURRENT:
+                        if (entry->length == 4) {
+                            int32_t current_ma = TLV_INT32_FROM_BE(entry->value);
+                            float current_a = TLV_CURRENT_MA_TO_A(current_ma);
+                            snprintf(value_str, sizeof(value_str), "AC Current: %.3f A (%" PRId32 " mA)", current_a, current_ma);
+                        }
+                        break;
+                        
+                    case TLV_TYPE_AC_FREQUENCY:
+                        if (entry->length == 4) {
+                            float frequency;
+                            TLV_FLOAT32_FROM_BE(entry->value, frequency);
+                            snprintf(value_str, sizeof(value_str), "AC Frequency: %.2f Hz", frequency);
+                        }
+                        break;
+                        
+                    case TLV_TYPE_AC_POWER:
+                        if (entry->length == 4) {
+                            int32_t power_mw = TLV_INT32_FROM_BE(entry->value);
+                            float power_w = TLV_POWER_MW_TO_W(power_mw);
+                            snprintf(value_str, sizeof(value_str), "AC Power: %.3f W (%" PRId32 " mW)", power_w, power_mw);
+                        }
+                        break;
+                        
+                    case TLV_TYPE_DEVICE_ID:
+                    case TLV_TYPE_FIRMWARE_VER:
+                    case TLV_TYPE_COMPILE_TIME:
+                        // String types
+                        {
+                            char temp_str[65] = {0};
+                            int copy_len = (entry->length < 64) ? entry->length : 64;
+                            memcpy(temp_str, entry->value, copy_len);
+                            snprintf(value_str, sizeof(value_str), "Text: \"%s\"", temp_str);
+                        }
+                        break;
+                        
+                    case TLV_TYPE_MAC_ADDRESS:
+                        if (entry->length == 6) {
+                            snprintf(value_str, sizeof(value_str), "MAC: " MACSTR, MAC2STR(entry->value));
+                        }
+                        break;
+                        
+                    case TLV_TYPE_STATUS_FLAGS:
+                        if (entry->length == 2) {
+                            uint16_t flags = TLV_UINT16_FROM_BE(entry->value);
+                            char flag_details[64] = {0};
+                            if (flags & STATUS_FLAG_POWER_ON) strcat(flag_details, "PWR ");
+                            if (flags & STATUS_FLAG_WIFI_CONNECTED) strcat(flag_details, "WIFI ");
+                            if (flags & STATUS_FLAG_ESP_NOW_ACTIVE) strcat(flag_details, "ESPNOW ");
+                            if (flags & STATUS_FLAG_ERROR) strcat(flag_details, "ERR ");
+                            snprintf(value_str, sizeof(value_str), "Status Flags: 0x%04X (%s)", flags, flag_details);
+                        }
+                        break;
+                        
+                    default:
+                        snprintf(value_str, sizeof(value_str), "Raw data (%d bytes)", entry->length);
+                        break;
+                }
+            } else {
+                snprintf(value_str, sizeof(value_str), "(empty)");
+            }
+            
+            // Single line output for each stored TLV entry
+            ESP_LOGI(TAG, "   [%d] Type=0x%02X (%s), Len=%d, %s", 
+                     valid_entries++,
+                     entry->type, 
+                     tlv_type_to_string(entry->type), 
+                     entry->length,
+                     value_str);
+        }
+    }
+}
+
+/**
+ * @brief Process received TLV data and store it indexed by MAC address
+ * @param mac_addr MAC address of sender
+ * @param data Raw received data
+ * @param data_len Length of received data
+ */
+static void process_received_tlv_data(const uint8_t *mac_addr, const uint8_t *data, size_t data_len)
+{
+    if (mac_addr == NULL || data == NULL || data_len == 0) {
+        return;
+    }
+    
+    ESP_LOGI(TAG, "🗂️ Processing TLV data from " MACSTR " (%zu bytes)", 
+             MAC2STR(mac_addr), data_len);
+    
+    // Store the TLV data for this device
+    esp_err_t ret = store_device_tlv_data(mac_addr, data, data_len);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "✅ TLV data stored successfully");
+        
+        // Print device information
+        if (g_tlv_mutex != NULL && 
+            xSemaphoreTake(g_tlv_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+            
+            device_tlv_storage_t *device = find_device_by_mac(mac_addr);
+            if (device != NULL) {
+                print_device_tlv_info(device);
+            }
+            
+            xSemaphoreGive(g_tlv_mutex);
+        }
+    } else {
+        ESP_LOGE(TAG, "❌ Failed to store TLV data: %s", esp_err_to_name(ret));
+    }
 }
