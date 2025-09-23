@@ -56,6 +56,11 @@ static void screen_key_event_cb(lv_event_t *e)
     bool page_handled = page_manager_handle_key_event(key);
     if (page_handled) {
         ESP_LOGI(TAG, "✅ Key %lu handled by current page", key);
+        // Send buzzer click feedback for navigation
+        esp_err_t buzzer_ret = ux_service_send_simple_effect(UX_BUZZER_EFFECT(UX_BUZZER_EFFECT_CLICK));
+        if (buzzer_ret != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to send buzzer click feedback: %s", esp_err_to_name(buzzer_ret));
+        }
         return;  // Page handled it, we're done
     }
     

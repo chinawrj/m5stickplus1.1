@@ -1,4 +1,5 @@
 #include "page_manager_espnow.h"
+#include "core/lv_group.h"
 #include "page_manager.h"
 #include "espnow_manager.h"
 #include "esp_log.h"
@@ -29,8 +30,30 @@ typedef struct {
     lv_obj_t *mac_label;        // MAC address display
 } espnow_overview_t;
 
+// ESP-NOW node detail page UI objects structure (TLV data display)
+typedef struct {
+    lv_obj_t *title_label;      // Page title
+    
+    // Row 1: Device ID and Network Information (2 items)
+    lv_obj_t *network_row_label; // "ID: M5NanoC6-123 | RSSI: -XX"
+    
+    // Row 2: Electrical Measurements (3 items)
+    lv_obj_t *electrical_row_label; // "220.5V | 2.35A | 520W"
+    
+    // Row 3: System Information with Firmware (3 items)  
+    lv_obj_t *system_row_label;   // "UP: 12:34:56 | 45KB | FW: v1.2.3"
+    
+    // Row 4: Version Information (not used anymore - FW moved to system_row)
+    lv_obj_t *version_row_label;  // Unused, kept for structure compatibility
+    
+    // Note: Compile time is displayed as a separate local label (not stored in this struct)
+} espnow_node_detail_t;
+
 // Global UI overview structure
 static espnow_overview_t g_espnow_overview = {0};
+
+// Global UI node detail structure
+static espnow_node_detail_t g_espnow_node_detail = {0};
 
 // ESP-NOW subpage management
 static espnow_subpage_id_t g_current_subpage = ESPNOW_SUBPAGE_OVERVIEW;
@@ -40,6 +63,51 @@ static atomic_bool g_espnow_data_updated = ATOMIC_VAR_INIT(false);
 
 // Real ESP-NOW statistics from manager
 static espnow_stats_t g_espnow_stats = {0};
+
+// Node detail data structure (TLV format simulation)
+typedef struct {
+    // Network data
+    uint8_t mac_address[6];          // TLV_TYPE_MAC_ADDRESS
+    int rssi;                        // Signal strength (not in TLV, but ESP-NOW specific)
+    bool wifi_connected;             // STATUS_FLAG_WIFI_CONNECTED
+    bool espnow_active;              // STATUS_FLAG_ESP_NOW_ACTIVE
+    
+    // Electrical measurements (from TLV format)
+    float ac_voltage;                // TLV_TYPE_AC_VOLTAGE (volts)
+    float ac_current;                // TLV_TYPE_AC_CURRENT (amperes) 
+    float ac_power;                  // TLV_TYPE_AC_POWER (watts)
+    float power_factor;              // TLV_TYPE_AC_POWER_FACTOR
+    
+    // System information
+    uint32_t uptime_seconds;         // TLV_TYPE_UPTIME
+    float temperature;               // TLV_TYPE_TEMPERATURE (celsius)
+    uint32_t free_memory_kb;         // Memory in KB
+    uint16_t error_code;             // TLV_TYPE_ERROR_CODE
+    
+    // Version information
+    char device_id[17];              // TLV_TYPE_DEVICE_ID (max 16 + null)
+    char firmware_version[17];       // TLV_TYPE_FIRMWARE_VER (max 16 + null)
+    char compile_time[33];           // TLV_TYPE_COMPILE_TIME (max 32 + null)
+} espnow_node_data_t;
+
+// Static node data (for demonstration - in real implementation, this would come from ESP-NOW messages)
+static espnow_node_data_t g_node_data = {
+    .mac_address = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC},
+    .rssi = -45,
+    .wifi_connected = true,
+    .espnow_active = true,
+    .ac_voltage = 220.5f,
+    .ac_current = 2.35f,
+    .ac_power = 520.0f,
+    .power_factor = 0.95f,
+    .uptime_seconds = 45296,  // 12:34:56
+    .temperature = 25.5f,
+    .free_memory_kb = 45,
+    .error_code = 0,
+    .device_id = "M5NanoC6-123456",
+    .firmware_version = "v1.2.3",
+    .compile_time = "Sep 23 2024 10:30"
+};
 
 // Previous state for change detection
 static uint32_t g_prev_uptime_sec = 0;      // Previous uptime in seconds
@@ -92,6 +160,9 @@ static void format_free_memory_string(char *buffer, size_t buffer_size)
 static esp_err_t espnow_overview_create(void);
 static esp_err_t espnow_overview_update(void);
 static esp_err_t espnow_overview_destroy(void);
+static esp_err_t espnow_node_detail_create(void);
+static esp_err_t espnow_node_detail_update(void);
+static esp_err_t espnow_node_detail_destroy(void);
 static esp_err_t espnow_page_init(void);
 static esp_err_t espnow_page_create(void);
 static esp_err_t espnow_page_update(void);
@@ -128,6 +199,9 @@ static esp_err_t espnow_page_init(void)
     
     // Reset UI object pointers in overview structure
     memset(&g_espnow_overview, 0, sizeof(espnow_overview_t));
+    
+    // Reset UI object pointers in node detail structure
+    memset(&g_espnow_node_detail, 0, sizeof(espnow_node_detail_t));
     
     // Initialize subpage state
     g_current_subpage = ESPNOW_SUBPAGE_OVERVIEW;
@@ -193,6 +267,8 @@ static esp_err_t espnow_page_destroy(void)
     }
     
     ESP_LOGI(TAG, "ESP-NOW page destroyed successfully");
+
+    g_current_subpage = ESPNOW_SUBPAGE_OVERVIEW; // Reset to default subpage
     return ESP_OK;
 }
 
@@ -389,6 +465,141 @@ static esp_err_t espnow_overview_destroy(void)
     return ESP_OK;
 }
 
+// Node detail page UI creation function
+static esp_err_t espnow_node_detail_create(void)
+{
+    ESP_LOGI(TAG, "Creating ESP-NOW node detail page...");
+    
+    lv_obj_t *scr = lv_scr_act();
+    
+    // Clear screen
+    lv_obj_clean(scr);
+    
+    // Set black background to match other pages
+    lv_obj_set_style_bg_color(scr, lv_color_black(), LV_PART_MAIN);
+    lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+    
+    // Title with page indicator
+    g_espnow_node_detail.title_label = lv_label_create(scr);
+    lv_label_set_text(g_espnow_node_detail.title_label, "Node Detail [2/2]");
+    lv_obj_set_style_text_color(g_espnow_node_detail.title_label, lv_color_hex(0x00FFFF), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_espnow_node_detail.title_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_pos(g_espnow_node_detail.title_label, 50, 5);
+    
+    // Row 1: Device ID and Network Information
+    g_espnow_node_detail.network_row_label = lv_label_create(scr);
+    char network_text[80];
+    snprintf(network_text, sizeof(network_text), 
+             "ID:%s | RSSI:%d",
+             g_node_data.device_id,
+             g_node_data.rssi);
+    lv_label_set_text(g_espnow_node_detail.network_row_label, network_text);
+    lv_obj_set_style_text_color(g_espnow_node_detail.network_row_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_espnow_node_detail.network_row_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_pos(g_espnow_node_detail.network_row_label, 5, 25);
+    
+    // Row 2: Electrical Measurements (Voltage, Current, Power)
+    g_espnow_node_detail.electrical_row_label = lv_label_create(scr);
+    char electrical_text[80];
+    snprintf(electrical_text, sizeof(electrical_text), 
+             "%.1fV | %.2fA | %.0fW",
+             g_node_data.ac_voltage,
+             g_node_data.ac_current,
+             g_node_data.ac_power);
+    lv_label_set_text(g_espnow_node_detail.electrical_row_label, electrical_text);
+    lv_obj_set_style_text_color(g_espnow_node_detail.electrical_row_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_espnow_node_detail.electrical_row_label, &lv_font_montserrat_18, LV_PART_MAIN);
+    lv_obj_set_pos(g_espnow_node_detail.electrical_row_label, 5, 45);
+    
+    // Row 3: System Information (Uptime, Memory, Firmware)
+    g_espnow_node_detail.system_row_label = lv_label_create(scr);
+    char system_text[80];
+    uint32_t hours = g_node_data.uptime_seconds / 3600;
+    uint32_t minutes = (g_node_data.uptime_seconds % 3600) / 60;
+    uint32_t seconds = g_node_data.uptime_seconds % 60;
+    snprintf(system_text, sizeof(system_text), 
+             "UP:%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32 " | %" PRIu32 "KB | FW:%s",
+             hours, minutes, seconds,
+             g_node_data.free_memory_kb,
+             g_node_data.firmware_version);
+    lv_label_set_text(g_espnow_node_detail.system_row_label, system_text);
+    lv_obj_set_style_text_color(g_espnow_node_detail.system_row_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_espnow_node_detail.system_row_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_pos(g_espnow_node_detail.system_row_label, 5, 65);
+    
+    // Additional compile time information (gray color for 4th row)
+    lv_obj_t *compile_label = lv_label_create(scr);
+    char compile_text[40];
+    snprintf(compile_text, sizeof(compile_text), "Built: %s", g_node_data.compile_time);
+    lv_label_set_text(compile_label, compile_text);
+    lv_obj_set_style_text_color(compile_label, lv_color_hex(0x808080), LV_PART_MAIN); // Gray color
+    lv_obj_set_style_text_font(compile_label, &lv_font_montserrat_14, LV_PART_MAIN);   // Same font size
+    lv_obj_set_pos(compile_label, 5, 85);
+    
+    ESP_LOGI(TAG, "ESP-NOW node detail page created successfully");
+    return ESP_OK;
+}
+
+// Node detail page UI update function
+static esp_err_t espnow_node_detail_update(void)
+{
+    ESP_LOGD(TAG, "Updating ESP-NOW node detail page...");
+    
+    // Update network information (Device ID and RSSI)
+    if (g_espnow_node_detail.network_row_label != NULL) {
+        char network_text[80];
+        snprintf(network_text, sizeof(network_text), 
+                 "ID:%s | RSSI:%d",
+                 g_node_data.device_id,
+                 g_node_data.rssi);
+        lv_label_set_text(g_espnow_node_detail.network_row_label, network_text);
+    }
+    
+    // Update electrical measurements (simplified to match create function)
+    if (g_espnow_node_detail.electrical_row_label != NULL) {
+        char electrical_text[80];
+        snprintf(electrical_text, sizeof(electrical_text), 
+                 "%.1fV | %.2fA | %.0fW",
+                 g_node_data.ac_voltage,
+                 g_node_data.ac_current,
+                 g_node_data.ac_power);
+        lv_label_set_text(g_espnow_node_detail.electrical_row_label, electrical_text);
+    }
+    
+    // Update system information (Uptime, Memory, Firmware)
+    if (g_espnow_node_detail.system_row_label != NULL) {
+        char system_text[80];
+        uint32_t hours = g_node_data.uptime_seconds / 3600;
+        uint32_t minutes = (g_node_data.uptime_seconds % 3600) / 60;
+        uint32_t seconds = g_node_data.uptime_seconds % 60;
+        snprintf(system_text, sizeof(system_text), 
+                 "UP:%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32 " | %" PRIu32 "KB | FW:%s",
+                 hours, minutes, seconds,
+                 g_node_data.free_memory_kb,
+                 g_node_data.firmware_version);
+        lv_label_set_text(g_espnow_node_detail.system_row_label, system_text);
+    }
+    
+    ESP_LOGD(TAG, "ESP-NOW node detail page updated successfully");
+    return ESP_OK;
+}
+
+// Node detail page UI destruction function
+static esp_err_t espnow_node_detail_destroy(void)
+{
+    ESP_LOGI(TAG, "Destroying ESP-NOW node detail page...");
+    
+    // Clear screen will automatically clean up all child objects
+    lv_obj_t *scr = lv_scr_act();
+    lv_obj_clean(scr);
+    
+    // Reset object pointers in node detail structure
+    memset(&g_espnow_node_detail, 0, sizeof(espnow_node_detail_t));
+    
+    ESP_LOGI(TAG, "ESP-NOW node detail page destroyed successfully");
+    return ESP_OK;
+}
+
 // Page-specific key event handler
 static bool espnow_page_handle_key_event(uint32_t key)
 {
@@ -396,40 +607,38 @@ static bool espnow_page_handle_key_event(uint32_t key)
     
     switch (key) {
         case LV_KEY_ENTER:
-            // Current behavior: Send test packet
-            // Future: Will be used for subpage-specific OK actions
+            // Subpage-specific ENTER actions
             if (g_current_subpage == ESPNOW_SUBPAGE_OVERVIEW) {
                 ESP_LOGI(TAG, "📤 ESP-NOW overview ENTER - Send test packet");
                 // Send a real test packet through ESP-NOW manager
                 espnow_manager_send_test_packet();
                 return true;  // We handled this key
+            } else if (g_current_subpage == ESPNOW_SUBPAGE_NODE_DETAIL) {
+                ESP_LOGI(TAG, "🔄 ESP-NOW node detail ENTER - Refresh data");
+                // Force data update for node detail
+                atomic_store(&g_espnow_data_updated, true);
+                return true;  // We handled this key
             }
-            // Future subpages will handle ENTER differently
             ESP_LOGD(TAG, "🔹 ENTER key not handled for subpage %d", g_current_subpage);
             return false;
             
-        case LV_KEY_UP:
-            // Current behavior: Increase transmission power  
-            // Future: May have subpage-specific UP actions
+        case LV_KEY_RIGHT:
+            // Subpage switching: Overview -> Node Detail
             if (g_current_subpage == ESPNOW_SUBPAGE_OVERVIEW) {
-                ESP_LOGI(TAG, "📶 ESP-NOW overview UP - Increase transmission power");
-                // Example: Adjust WiFi transmission power
+                ESP_LOGI(TAG, "🔄 ESP-NOW RIGHT - Switch to Node Detail subpage");
+                esp_err_t ret = espnow_subpage_switch(ESPNOW_SUBPAGE_NODE_DETAIL);
+                if (ret == ESP_OK) {
+                    ESP_LOGI(TAG, "✅ Successfully switched to node detail subpage");
+                } else {
+                    ESP_LOGE(TAG, "❌ Failed to switch to node detail subpage: %s", esp_err_to_name(ret));
+                }
                 return true;  // We handled this key
+            } else if (g_current_subpage == ESPNOW_SUBPAGE_NODE_DETAIL) {
+                ESP_LOGI(TAG, "📶 ESP-NOW node detail end, should switch to next main page");
+                return false;
             }
             return false;
             
-        case LV_KEY_DOWN:
-            // Current behavior: Decrease transmission power
-            // Future: May have subpage-specific DOWN actions  
-            if (g_current_subpage == ESPNOW_SUBPAGE_OVERVIEW) {
-                ESP_LOGI(TAG, "📉 ESP-NOW overview DOWN - Decrease transmission power");
-                // Example: Adjust WiFi transmission power
-                return true;  // We handled this key
-            }
-            return false;
-            
-        // Future: LV_KEY_ESC or other keys for subpage switching
-        
         default:
             ESP_LOGD(TAG, "🔹 ESP-NOW page - unhandled key: %lu", key);
             return false;  // Let global handler process this key
@@ -481,9 +690,8 @@ static esp_err_t espnow_subpage_create_current(void)
             return espnow_overview_create();
             
         case ESPNOW_SUBPAGE_NODE_DETAIL:
-            ESP_LOGD(TAG, "Creating node detail subpage (placeholder)");
-            // TODO: Implement node detail subpage creation
-            return ESP_ERR_NOT_SUPPORTED;
+            ESP_LOGD(TAG, "Creating node detail subpage");
+            return espnow_node_detail_create();
             
         default:
             ESP_LOGE(TAG, "Unknown subpage ID: %d", g_current_subpage);
@@ -498,8 +706,7 @@ static esp_err_t espnow_subpage_update_current(void)
             return espnow_overview_update();
             
         case ESPNOW_SUBPAGE_NODE_DETAIL:
-            // TODO: Implement node detail subpage update
-            return ESP_ERR_NOT_SUPPORTED;
+            return espnow_node_detail_update();
             
         default:
             ESP_LOGE(TAG, "Unknown subpage ID: %d", g_current_subpage);
@@ -514,8 +721,7 @@ static esp_err_t espnow_subpage_destroy_current(void)
             return espnow_overview_destroy();
             
         case ESPNOW_SUBPAGE_NODE_DETAIL:
-            // TODO: Implement node detail subpage destruction
-            return ESP_ERR_NOT_SUPPORTED;
+            return espnow_node_detail_destroy();
             
         default:
             ESP_LOGE(TAG, "Unknown subpage ID: %d", g_current_subpage);
