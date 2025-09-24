@@ -193,6 +193,9 @@ static esp_err_t espnow_node_detail_create(void);
 static esp_err_t espnow_node_detail_update(void);
 static esp_err_t espnow_node_detail_destroy(void);
 
+// Internal helper function for updating node detail data and UI
+static esp_err_t espnow_node_detail_refresh_data_and_ui(void);
+
 // Main page interface functions
 static esp_err_t espnow_page_init(void);
 static esp_err_t espnow_page_create(void);
@@ -533,35 +536,37 @@ static esp_err_t espnow_node_detail_create(void)
     lv_obj_set_style_text_font(g_node_detail_ui.title_label, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(g_node_detail_ui.title_label, 50, 5);
     
-    // Row 1: Device ID and Network Information (placeholder values)
+    // Create UI elements with initial placeholder text - data will be populated by refresh function
+    
+    // Row 1: Device ID and Network Information 
     g_node_detail_ui.network_row_label = lv_label_create(scr);
     lv_label_set_text(g_node_detail_ui.network_row_label, "ID: --- | RSSI: ---");
     lv_obj_set_style_text_color(g_node_detail_ui.network_row_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(g_node_detail_ui.network_row_label, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(g_node_detail_ui.network_row_label, 5, 25);
     
-    // Row 2: Electrical Measurements - Voltage & Current (placeholder values)
+    // Row 2: Electrical Measurements - Voltage & Current
     g_node_detail_ui.electrical_row_label = lv_label_create(scr);
     lv_label_set_text(g_node_detail_ui.electrical_row_label, "---.-V | --.-A");
     lv_obj_set_style_text_color(g_node_detail_ui.electrical_row_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(g_node_detail_ui.electrical_row_label, &lv_font_montserrat_18, LV_PART_MAIN);
     lv_obj_set_pos(g_node_detail_ui.electrical_row_label, 5, 45);
     
-    // Row 3: Power Information (placeholder value)
+    // Row 3: Power Information
     g_node_detail_ui.power_label = lv_label_create(scr);
     lv_label_set_text(g_node_detail_ui.power_label, "-----.-W");
     lv_obj_set_style_text_color(g_node_detail_ui.power_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(g_node_detail_ui.power_label, &lv_font_montserrat_18, LV_PART_MAIN);
     lv_obj_set_pos(g_node_detail_ui.power_label, 5, 65);
     
-    // Row 4: System Information (placeholder values)
+    // Row 4: System Information
     g_node_detail_ui.system_row_label = lv_label_create(scr);
     lv_label_set_text(g_node_detail_ui.system_row_label, "UP: --:--:-- | --KB | FW: ---");
     lv_obj_set_style_text_color(g_node_detail_ui.system_row_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(g_node_detail_ui.system_row_label, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(g_node_detail_ui.system_row_label, 5, 85);
     
-    // Row 5: Compile time information (placeholder value)
+    // Row 5: Compile time information
     g_node_detail_ui.compile_label = lv_label_create(scr);
     lv_label_set_text(g_node_detail_ui.compile_label, "Built: ---");
     lv_obj_set_style_text_color(g_node_detail_ui.compile_label, lv_color_white(), LV_PART_MAIN); // White color
@@ -588,6 +593,13 @@ static esp_err_t espnow_node_detail_create(void)
     lv_obj_set_style_text_opa(g_node_detail_ui.memory_label, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_pos(g_node_detail_ui.memory_label, 170, 120);  // Right-aligned
     
+    // Populate data using common refresh function (replaces placeholder text if data is available)
+    esp_err_t ret = espnow_node_detail_refresh_data_and_ui();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to refresh node detail data during creation: %s", esp_err_to_name(ret));
+        // Continue anyway - UI is created with placeholders
+    }
+    
     ESP_LOGI(TAG, "ESP-NOW node detail page created successfully");
     return ESP_OK;
 }
@@ -610,6 +622,23 @@ static esp_err_t espnow_node_detail_update(void)
         format_free_memory_string(memory_text, sizeof(memory_text));
         lv_label_set_text(g_node_detail_ui.memory_label, memory_text);
     }
+    
+    // Use common function to refresh device data and UI
+    esp_err_t ret = espnow_node_detail_refresh_data_and_ui();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to refresh node detail data and UI: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    ESP_LOGD(TAG, "ESP-NOW node detail page updated successfully");
+    return ESP_OK;
+}
+
+// Internal helper function for updating node detail data and UI
+// This function handles device data retrieval and UI updates for all labels
+static esp_err_t espnow_node_detail_refresh_data_and_ui(void)
+{
+    ESP_LOGD(TAG, "Refreshing ESP-NOW node detail data and UI...");
     
     // Get latest device information from ESP-NOW manager (current device index)
     espnow_device_info_t device_info = {0};
@@ -643,73 +672,78 @@ static esp_err_t espnow_node_detail_update(void)
         ESP_LOGD(TAG, "📊 Using real device data: MAC=" MACSTR ", entries=%d, uptime=%lu", 
                 MAC2STR(device_info.mac_address), device_info.entry_count, device_info.uptime_seconds);
     } else {
-        ESP_LOGD(TAG, "📊 No real device data available, we can return now");
-        return ESP_OK;
+        ESP_LOGD(TAG, "📊 No real device data available, using placeholders");
     }
     
-    // Update network information (Device ID and RSSI)
+    // Update Row 1: Network information (Device ID and RSSI)
     if (g_node_detail_ui.network_row_label != NULL) {
         char network_text[80];
         if (have_real_data) {
             snprintf(network_text, sizeof(network_text), 
                      "ID:%s | RSSI:%d",
                      g_current_node_data.device_id,
-                     g_current_node_data.rssi
-            );
+                     g_current_node_data.rssi);
         } else {
-            // Indicate demo data
-            snprintf(network_text, sizeof(network_text), 
-                     "ID:-------- | RSSI:----"
-            );
+            snprintf(network_text, sizeof(network_text), "ID: --- | RSSI: ---");
         }
-        snprintf(network_text, sizeof(network_text), 
-                 "%s | RSSI:%d",
-                 g_current_node_data.device_id,
-                 g_current_node_data.rssi
-        );
         lv_label_set_text(g_node_detail_ui.network_row_label, network_text);
     }
     
     // Update Row 2: Electrical measurements - Voltage & Current
     if (g_node_detail_ui.electrical_row_label != NULL) {
         char electrical_text[80];
-        snprintf(electrical_text, sizeof(electrical_text), 
-                 "%.1fV | %.2fA",
-                 g_current_node_data.ac_voltage,
-                 g_current_node_data.ac_current
-        );
+        if (have_real_data) {
+            snprintf(electrical_text, sizeof(electrical_text), 
+                     "%.1fV | %.2fA",
+                     g_current_node_data.ac_voltage,
+                     g_current_node_data.ac_current);
+        } else {
+            snprintf(electrical_text, sizeof(electrical_text), "---.-V | --.-A");
+        }
         lv_label_set_text(g_node_detail_ui.electrical_row_label, electrical_text);
     }
     
     // Update Row 3: Power information
     if (g_node_detail_ui.power_label != NULL) {
         char power_text[20];
-        snprintf(power_text, sizeof(power_text), "%.1fW", g_current_node_data.ac_power);
+        if (have_real_data) {
+            snprintf(power_text, sizeof(power_text), "%.1fW", g_current_node_data.ac_power);
+        } else {
+            snprintf(power_text, sizeof(power_text), "-----.-W");
+        }
         lv_label_set_text(g_node_detail_ui.power_label, power_text);
     }
     
     // Update Row 4: System information (Uptime, Memory, Firmware)
     if (g_node_detail_ui.system_row_label != NULL) {
         char system_text[80];
-        uint32_t hours = g_current_node_data.uptime_seconds / 3600;
-        uint32_t minutes = (g_current_node_data.uptime_seconds % 3600) / 60;
-        uint32_t seconds = g_current_node_data.uptime_seconds % 60;
-        snprintf(system_text, sizeof(system_text), 
-                 "UP:%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32 " | %" PRIu32 "KB | FW:%s",
-                 hours, minutes, seconds,
-                 g_current_node_data.free_memory_kb,
-                 g_current_node_data.firmware_version);
+        if (have_real_data) {
+            uint32_t hours = g_current_node_data.uptime_seconds / 3600;
+            uint32_t minutes = (g_current_node_data.uptime_seconds % 3600) / 60;
+            uint32_t seconds = g_current_node_data.uptime_seconds % 60;
+            snprintf(system_text, sizeof(system_text), 
+                     "UP:%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32 " | %" PRIu32 "KB | FW:%s",
+                     hours, minutes, seconds,
+                     g_current_node_data.free_memory_kb,
+                     g_current_node_data.firmware_version);
+        } else {
+            snprintf(system_text, sizeof(system_text), "UP: --:--:-- | --KB | FW: ---");
+        }
         lv_label_set_text(g_node_detail_ui.system_row_label, system_text);
     }
     
     // Update Row 5: Compile time information
     if (g_node_detail_ui.compile_label != NULL) {
         char compile_text[40];
-        snprintf(compile_text, sizeof(compile_text), "Built: %s", g_current_node_data.compile_time);
+        if (have_real_data) {
+            snprintf(compile_text, sizeof(compile_text), "Built: %s", g_current_node_data.compile_time);
+        } else {
+            snprintf(compile_text, sizeof(compile_text), "Built: ---");
+        }
         lv_label_set_text(g_node_detail_ui.compile_label, compile_text);
     }
     
-    ESP_LOGD(TAG, "ESP-NOW node detail page updated successfully");
+    ESP_LOGD(TAG, "ESP-NOW node detail data and UI refreshed successfully");
     return ESP_OK;
 }
 
