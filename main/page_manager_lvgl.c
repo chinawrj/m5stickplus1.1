@@ -29,6 +29,7 @@ static lv_indev_t *g_input_device = NULL;
 static TimerHandle_t g_backlight_timer = NULL;
 static const uint32_t BACKLIGHT_TIMEOUT_MS = 10000;  // 10 seconds
 static bool g_backlight_auto_off_enabled = true;
+static bool g_backlight_is_on = true;  // Track backlight state to avoid I2C calls
 
 /**
  * @brief Backlight timer callback function
@@ -55,6 +56,7 @@ static void backlight_timer_callback(TimerHandle_t xTimer)
         ESP_LOGW(TAG, "❌ Failed to turn off backlight: %s", esp_err_to_name(ret));
     } else {
         ESP_LOGI(TAG, "✅ Backlight turned off successfully");
+        g_backlight_is_on = false;  // Update state without I2C call
     }
 }
 
@@ -63,6 +65,7 @@ static void backlight_timer_callback(TimerHandle_t xTimer)
  * 
  * This function resets the backlight timer whenever there is user activity.
  * If the backlight is off, it will also turn it back on.
+ * Optimized to avoid unnecessary I2C calls by tracking backlight state.
  */
 static void reset_backlight_timer(void)
 {
@@ -70,18 +73,19 @@ static void reset_backlight_timer(void)
         return;
     }
     
-    // Check if backlight is currently off and turn it back on
-    if (!axp192_get_tft_backlight_status()) {
+    // Only turn on backlight if we know it's off (avoid I2C call every time)
+    if (!g_backlight_is_on) {
         ESP_LOGI(TAG, "💡 User activity detected - turning backlight back on");
         esp_err_t ret = axp192_power_tft_backlight(true);
         if (ret != ESP_OK) {
             ESP_LOGW(TAG, "❌ Failed to turn on backlight: %s", esp_err_to_name(ret));
         } else {
             ESP_LOGI(TAG, "✅ Backlight turned on successfully");
+            g_backlight_is_on = true;  // Update state without I2C call
         }
     }
     
-    // Reset timer
+    // Reset timer (this is lightweight and always needed)
     BaseType_t result = xTimerReset(g_backlight_timer, pdMS_TO_TICKS(100));
     if (result != pdPASS) {
         ESP_LOGW(TAG, "⚠️ Failed to reset backlight timer");
@@ -217,6 +221,7 @@ esp_err_t page_manager_lvgl_init(lv_display_t *display, lv_indev_t *indev)
     
     // Initialize state
     g_key_events_enabled = true;
+    g_backlight_is_on = true;  // Backlight is on at initialization
     
     // Create backlight auto-off timer
     g_backlight_timer = xTimerCreate(
@@ -306,6 +311,7 @@ esp_err_t page_manager_lvgl_deinit(void)
     
     g_key_events_enabled = false;
     g_backlight_auto_off_enabled = false;
+    g_backlight_is_on = true;  // Reset state
     
     // Clean up backlight timer
     if (g_backlight_timer) {
