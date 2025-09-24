@@ -11,6 +11,7 @@
 #include "espnow_example.h"
 #include "page_manager_espnow.h"
 #include "esphome_tlv_format.h"  // TLV data format for ESP-NOW communication
+#include "ux_service.h"  // LED animation support
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
@@ -40,6 +41,9 @@ uint8_t s_example_broadcast_mac[ESP_NOW_ETH_ALEN] = { 0xFF, 0xFF, 0xFF, 0xFF, 0x
 static uint16_t s_espnow_seq[EXAMPLE_ESPNOW_DATA_MAX] = { 0, 0 };
 static espnow_stats_t s_stats = {0};
 static bool s_espnow_running = false;
+
+// LED animation rate limiting constant
+static const uint32_t LED_ANIMATION_INTERVAL_MS = 1000;  // 1 second
 
 // Device Discovery Task Variables
 typedef struct {
@@ -87,6 +91,7 @@ static void espnow_wifi_init(void);
 static void espnow_send_cb(const esp_now_send_info_t *tx_info, esp_now_send_status_t status);
 static void espnow_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len);
 static int espnow_data_parse(uint8_t *data, uint16_t data_len, uint8_t *state, uint16_t *seq, uint32_t *magic);
+static void espnow_trigger_led_animation(void);
 
 // TLV helper functions
 static const char* tlv_type_to_string(uint8_t type);
@@ -708,6 +713,9 @@ static void espnow_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *
     // Update statistics
     s_stats.packets_received++;
     
+    // Trigger LED animation on packet reception (rate limited)
+    espnow_trigger_led_animation();
+    
     // Notify ESP-NOW page of receive statistics update
     espnow_page_notify_data_update();
 }
@@ -1113,6 +1121,37 @@ static void espnow_recv_only_task(void *pvParameter)
         free(recv_param);
     }
     vTaskDelete(NULL);
+}
+
+// ===== LED ANIMATION INTEGRATION =====
+
+/**
+ * @brief Trigger LED animation with rate limiting
+ * 
+ * Sends a LED animation request to ux_service when ESP-NOW packets are received.
+ * Rate limited to once per second to avoid excessive blinking.
+ */
+static void espnow_trigger_led_animation(void)
+{
+    static TickType_t s_last_led_animation_time = 0;  // Function-local static variable
+    TickType_t current_time = xTaskGetTickCount();
+    TickType_t time_diff = current_time - s_last_led_animation_time;
+    
+    // Check if enough time has passed since last animation (1 second)
+    if (time_diff >= pdMS_TO_TICKS(LED_ANIMATION_INTERVAL_MS)) {
+        // Send LED blink animation to UX service
+        esp_err_t ret = ux_led_blink_fast(500);  // Fast blink for 500ms
+        if (ret == ESP_OK) {
+            s_last_led_animation_time = current_time;
+            ESP_LOGD(TAG, "🔴 LED animation triggered on ESP-NOW packet reception");
+        } else {
+            ESP_LOGW(TAG, "Failed to trigger LED animation: %s", esp_err_to_name(ret));
+        }
+    } else {
+        // Rate limited - too soon since last animation
+        uint32_t remaining_ms = pdTICKS_TO_MS(pdMS_TO_TICKS(LED_ANIMATION_INTERVAL_MS) - time_diff);
+        ESP_LOGD(TAG, "🔴 LED animation rate limited (wait %lu ms)", remaining_ms);
+    }
 }
 
 // ===== TLV DEVICE STORAGE IMPLEMENTATION =====
