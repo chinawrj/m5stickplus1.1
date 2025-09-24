@@ -573,7 +573,7 @@ static esp_err_t espnow_node_detail_create(void)
     lv_obj_set_style_text_font(g_node_detail_ui.compile_label, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(g_node_detail_ui.compile_label, 5, 105);
     
-    // Uptime at bottom-left (same as overview page)
+    // Uptime at bottom-left (LOCAL DEVICE system uptime, same as overview page)
     g_node_detail_ui.uptime_label = lv_label_create(scr);
     char uptime_text[16];
     format_uptime_string(uptime_text, sizeof(uptime_text));
@@ -583,7 +583,9 @@ static esp_err_t espnow_node_detail_create(void)
     lv_obj_set_style_text_opa(g_node_detail_ui.uptime_label, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_pos(g_node_detail_ui.uptime_label, 5, 120);
     
-    // Memory at bottom-right (same as overview page)
+    // Memory at bottom-right (LOCAL DEVICE memory, same as overview page)
+    // NOTE: This shows local M5StickC Plus memory, NOT remote device memory
+    // Remote device memory is shown in system_row_label above from TLV data
     g_node_detail_ui.memory_label = lv_label_create(scr);
     char memory_text[16];
     format_free_memory_string(memory_text, sizeof(memory_text));
@@ -609,14 +611,15 @@ static esp_err_t espnow_node_detail_update(void)
 {
     ESP_LOGD(TAG, "Updating ESP-NOW node detail page...");
     
-    // Always update uptime display (same as overview page)
+    // Always update LOCAL DEVICE uptime display (same as overview page)
     if (g_node_detail_ui.uptime_label != NULL) {
         char uptime_text[16];
         format_uptime_string(uptime_text, sizeof(uptime_text));
         lv_label_set_text(g_node_detail_ui.uptime_label, uptime_text);
     }
     
-    // Always update memory display (same as overview page)
+    // Always update LOCAL DEVICE memory display (same as overview page)
+    // NOTE: Remote device memory is handled in refresh_data_and_ui function
     if (g_node_detail_ui.memory_label != NULL) {
         char memory_text[16];
         format_free_memory_string(memory_text, sizeof(memory_text));
@@ -721,11 +724,21 @@ static esp_err_t espnow_node_detail_refresh_data_and_ui(void)
             uint32_t hours = g_current_node_data.uptime_seconds / 3600;
             uint32_t minutes = (g_current_node_data.uptime_seconds % 3600) / 60;
             uint32_t seconds = g_current_node_data.uptime_seconds % 60;
-            snprintf(system_text, sizeof(system_text), 
-                     "UP:%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32 " | %" PRIu32 "KB | FW:%s",
-                     hours, minutes, seconds,
-                     g_current_node_data.free_memory_kb,
-                     g_current_node_data.firmware_version);
+            
+            // Use remote device memory if available, otherwise show placeholder
+            if (g_current_node_data.free_memory_kb > 0) {
+                snprintf(system_text, sizeof(system_text), 
+                         "UP:%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32 " | %" PRIu32 "KB | FW:%s",
+                         hours, minutes, seconds,
+                         g_current_node_data.free_memory_kb,
+                         g_current_node_data.firmware_version);
+            } else {
+                // No valid remote memory data - show N/A
+                snprintf(system_text, sizeof(system_text), 
+                         "UP:%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32 " | N/A | FW:%s",
+                         hours, minutes, seconds,
+                         g_current_node_data.firmware_version);
+            }
         } else {
             snprintf(system_text, sizeof(system_text), "UP: --:--:-- | --KB | FW: ---");
         }

@@ -27,10 +27,11 @@
 // Basic Types (0x00-0x0F)
 #define TLV_TYPE_UPTIME          0x01  // System uptime in seconds (uint32_t)
 #define TLV_TYPE_TIMESTAMP       0x02  // Unix timestamp (uint32_t)
-#define TLV_TYPE_DEVICE_ID       0x03  // Device identifier (string, max 16 bytes)
-#define TLV_TYPE_FIRMWARE_VER    0x04  // Firmware version (string, max 16 bytes)
+#define TLV_TYPE_DEVICE_ID       0x03  // Device identifier (string, max 32 bytes)
+#define TLV_TYPE_FIRMWARE_VER    0x04  // Firmware version (string, max 32 bytes)
 #define TLV_TYPE_MAC_ADDRESS     0x05  // Device MAC address (6 bytes)
 #define TLV_TYPE_COMPILE_TIME    0x06  // Compile timestamp (string, max 32 bytes)
+#define TLV_TYPE_FREE_MEMORY     0x07  // Free memory in bytes (uint32_t)
 
 // Electrical Measurements (0x10-0x2F)
 // All electrical values follow DL/T 645-2007 smart meter protocol precision standards

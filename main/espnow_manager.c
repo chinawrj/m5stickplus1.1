@@ -537,21 +537,29 @@ esp_err_t espnow_manager_get_device_info(int device_index, espnow_device_info_t 
                     }
                     break;
                     
+                case TLV_TYPE_FREE_MEMORY:
+                    if (entry->length == 4) {
+                        // Free memory in bytes (uint32_t big-endian), convert to KB
+                        uint32_t free_memory_bytes = (entry->value[0] << 24) | 
+                                                   (entry->value[1] << 16) | 
+                                                   (entry->value[2] << 8) | 
+                                                    entry->value[3];
+                        device_info->free_memory_kb = free_memory_bytes / 1024;
+                        ESP_LOGD(TAG, "🧠 Parsed TLV_TYPE_FREE_MEMORY: %u bytes (%u KB)", 
+                                free_memory_bytes, device_info->free_memory_kb);
+                    }
+                    break;
+                    
                 default:
                     // Unknown TLV type, skip
                     break;
             }
         }
         
-        // Estimate free memory based on uptime (simple heuristic for demonstration)
-        if (device_info->uptime_seconds > 0) {
-            // Assume devices start with ~64KB and slowly consume memory
-            device_info->free_memory_kb = 64 - (device_info->uptime_seconds / 3600);
-            if (device_info->free_memory_kb < 16) {
-                device_info->free_memory_kb = 16; // Minimum reasonable value
-            }
-        } else {
-            device_info->free_memory_kb = 45; // Default value
+        // If free memory was not parsed from TLV data, set to unknown/unavailable
+        // The TLV_TYPE_FREE_MEMORY case above will set the real value when available
+        if (device_info->free_memory_kb == 0) {
+            ESP_LOGD(TAG, "⚠️  No TLV_TYPE_FREE_MEMORY data received, memory info unavailable");
         }
         
         result = ESP_OK;
@@ -721,6 +729,7 @@ static const char* tlv_type_to_string(uint8_t type)
         case TLV_TYPE_FIRMWARE_VER:    return "FIRMWARE_VER";
         case TLV_TYPE_MAC_ADDRESS:     return "MAC_ADDRESS";
         case TLV_TYPE_COMPILE_TIME:    return "COMPILE_TIME";
+        case TLV_TYPE_FREE_MEMORY:     return "FREE_MEMORY";
         
         // Electrical Measurements (0x10-0x2F)
         case TLV_TYPE_AC_VOLTAGE:      return "AC_VOLTAGE";
