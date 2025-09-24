@@ -23,6 +23,11 @@ typedef struct {
     bool is_connected;
     uint32_t last_recv_time;    // Timestamp of last received packet
     uint32_t last_seq_num;      // Last received sequence number for restart detection
+    
+    // Node statistics
+    uint16_t online_nodes;      // Number of nodes seen in last 10 seconds
+    uint16_t used_nodes;        // Number of nodes currently in use (in_use = true)
+    uint16_t total_nodes;       // Maximum number of nodes supported (MAX_TLV_DEVICES)
 } espnow_stats_t;
 
 /**

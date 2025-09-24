@@ -310,7 +310,43 @@ esp_err_t espnow_manager_get_stats(espnow_stats_t *stats)
         return ESP_ERR_INVALID_ARG;
     }
     
+    // Copy basic statistics first
     memcpy(stats, &s_stats, sizeof(espnow_stats_t));
+    
+    // Calculate node statistics
+    if (g_tlv_mutex != NULL && xSemaphoreTake(g_tlv_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        uint16_t online_count = 0;
+        uint16_t used_count = 0;
+        uint32_t current_time = xTaskGetTickCount();
+        const uint32_t ONLINE_TIMEOUT_TICKS = pdMS_TO_TICKS(10000);  // 10 seconds
+        
+        for (int i = 0; i < MAX_TLV_DEVICES; i++) {
+            if (g_tlv_devices[i].in_use) {
+                used_count++;
+                
+                // Check if node is online (received data in last 10 seconds)
+                uint32_t time_diff = current_time - g_tlv_devices[i].last_seen;
+                if (time_diff <= ONLINE_TIMEOUT_TICKS) {
+                    online_count++;
+                }
+            }
+        }
+        
+        stats->online_nodes = online_count;
+        stats->used_nodes = used_count;
+        stats->total_nodes = MAX_TLV_DEVICES;
+        
+        xSemaphoreGive(g_tlv_mutex);
+        
+        ESP_LOGD(TAG, "📊 Node statistics: online=%d, used=%d, total=%d", 
+                 stats->online_nodes, stats->used_nodes, stats->total_nodes);
+    } else {
+        // If mutex not available, use default values
+        stats->online_nodes = 0;
+        stats->used_nodes = 0;
+        stats->total_nodes = MAX_TLV_DEVICES;
+    }
+    
     return ESP_OK;
 }
 

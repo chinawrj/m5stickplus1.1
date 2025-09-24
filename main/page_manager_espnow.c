@@ -29,6 +29,7 @@ typedef struct {
     lv_obj_t *recv_label;       // Received packets counter
     lv_obj_t *title_label;      // Page title
     lv_obj_t *mac_label;        // MAC address display
+    lv_obj_t *nodes_label;      // Online Node: n1/n2/n3 display
 } espnow_overview_t;
 
 // ESP-NOW node detail page UI objects structure (TLV data display)
@@ -435,6 +436,16 @@ static esp_err_t espnow_overview_create(void)
     lv_obj_set_style_text_font(g_overview_ui.recv_label, &lv_font_montserrat_18, LV_PART_MAIN);
     lv_obj_set_pos(g_overview_ui.recv_label, 10, 74);
     
+    // Online Node statistics
+    g_overview_ui.nodes_label = lv_label_create(scr);
+    char nodes_text[32];
+    snprintf(nodes_text, sizeof(nodes_text), "Online Node: %d/%d/%d", 
+             g_espnow_stats.online_nodes, g_espnow_stats.used_nodes, g_espnow_stats.total_nodes);
+    lv_label_set_text(g_overview_ui.nodes_label, nodes_text);
+    lv_obj_set_style_text_color(g_overview_ui.nodes_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_overview_ui.nodes_label, &lv_font_montserrat_18, LV_PART_MAIN);
+    lv_obj_set_pos(g_overview_ui.nodes_label, 10, 96);
+    
     // Uptime at bottom-left
     g_overview_ui.uptime_label = lv_label_create(scr);
     char uptime_text[16];
@@ -493,6 +504,14 @@ static esp_err_t espnow_overview_update(void)
         char recv_text[32];
         snprintf(recv_text, sizeof(recv_text), "Received: %"PRIu32" packets", g_espnow_stats.packets_received);
         lv_label_set_text(g_overview_ui.recv_label, recv_text);
+    }
+    
+    // Update Online Node statistics
+    if (g_overview_ui.nodes_label != NULL) {
+        char nodes_text[32];
+        snprintf(nodes_text, sizeof(nodes_text), "Online Node: %d/%d/%d", 
+                 g_espnow_stats.online_nodes, g_espnow_stats.used_nodes, g_espnow_stats.total_nodes);
+        lv_label_set_text(g_overview_ui.nodes_label, nodes_text);
     }
     
     return ESP_OK;
