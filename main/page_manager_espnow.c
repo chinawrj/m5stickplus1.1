@@ -1,5 +1,6 @@
 #include "page_manager_espnow.h"
 #include "core/lv_group.h"
+#include "misc/lv_color.h"
 #include "page_manager.h"
 #include "espnow_manager.h"
 #include "esp_log.h"
@@ -45,6 +46,10 @@ typedef struct {
     
     // Row 4: Version Information (not used anymore - FW moved to system_row)
     lv_obj_t *version_row_label;  // Unused, kept for structure compatibility
+    
+    // Bottom status labels (like overview page)
+    lv_obj_t *uptime_label;     // System uptime display (bottom-left)
+    lv_obj_t *memory_label;     // Free memory display (bottom-right)
     
     // Note: Compile time is displayed as a separate local label (not stored in this struct)
 } espnow_node_detail_t;
@@ -92,21 +97,21 @@ typedef struct {
 
 // Static node data (for demonstration - in real implementation, this would come from ESP-NOW messages)
 static espnow_node_data_t g_node_data = {
-    .mac_address = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC},
-    .rssi = -45,
-    .wifi_connected = true,
-    .espnow_active = true,
-    .ac_voltage = 220.5f,
-    .ac_current = 2.35f,
-    .ac_power = 520.0f,
-    .power_factor = 0.95f,
-    .uptime_seconds = 45296,  // 12:34:56
-    .temperature = 25.5f,
-    .free_memory_kb = 45,
+    .mac_address = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+    .rssi = 0,
+    .wifi_connected = false,
+    .espnow_active = false,
+    .ac_voltage = 0.0f,
+    .ac_current = 0.0f,
+    .ac_power = 0.0f,
+    .power_factor = 0.0f,
+    .uptime_seconds = 0,
+    .temperature = 0.0f,
+    .free_memory_kb = 0,
     .error_code = 0,
-    .device_id = "M5NanoC6-123456",
-    .firmware_version = "v1.2.3",
-    .compile_time = "Sep 23 2024 10:30"
+    .device_id = "-",
+    .firmware_version = "-",
+    .compile_time = "-"
 };
 
 // Previous state for change detection
@@ -486,55 +491,53 @@ static esp_err_t espnow_node_detail_create(void)
     lv_obj_set_style_text_font(g_espnow_node_detail.title_label, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(g_espnow_node_detail.title_label, 50, 5);
     
-    // Row 1: Device ID and Network Information
+    // Row 1: Device ID and Network Information (placeholder values)
     g_espnow_node_detail.network_row_label = lv_label_create(scr);
-    char network_text[80];
-    snprintf(network_text, sizeof(network_text), 
-             "ID:%s | RSSI:%d",
-             g_node_data.device_id,
-             g_node_data.rssi);
-    lv_label_set_text(g_espnow_node_detail.network_row_label, network_text);
+    lv_label_set_text(g_espnow_node_detail.network_row_label, "ID: --- | RSSI: ---");
     lv_obj_set_style_text_color(g_espnow_node_detail.network_row_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(g_espnow_node_detail.network_row_label, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(g_espnow_node_detail.network_row_label, 5, 25);
     
-    // Row 2: Electrical Measurements (Voltage, Current, Power)
+    // Row 2: Electrical Measurements (placeholder values)
     g_espnow_node_detail.electrical_row_label = lv_label_create(scr);
-    char electrical_text[80];
-    snprintf(electrical_text, sizeof(electrical_text), 
-             "%.1fV | %.2fA | %.0fW",
-             g_node_data.ac_voltage,
-             g_node_data.ac_current,
-             g_node_data.ac_power);
-    lv_label_set_text(g_espnow_node_detail.electrical_row_label, electrical_text);
+    lv_label_set_text(g_espnow_node_detail.electrical_row_label, "---V | ---A | ---W");
     lv_obj_set_style_text_color(g_espnow_node_detail.electrical_row_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(g_espnow_node_detail.electrical_row_label, &lv_font_montserrat_18, LV_PART_MAIN);
     lv_obj_set_pos(g_espnow_node_detail.electrical_row_label, 5, 45);
     
-    // Row 3: System Information (Uptime, Memory, Firmware)
+    // Row 3: System Information (placeholder values)
     g_espnow_node_detail.system_row_label = lv_label_create(scr);
-    char system_text[80];
-    uint32_t hours = g_node_data.uptime_seconds / 3600;
-    uint32_t minutes = (g_node_data.uptime_seconds % 3600) / 60;
-    uint32_t seconds = g_node_data.uptime_seconds % 60;
-    snprintf(system_text, sizeof(system_text), 
-             "UP:%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32 " | %" PRIu32 "KB | FW:%s",
-             hours, minutes, seconds,
-             g_node_data.free_memory_kb,
-             g_node_data.firmware_version);
-    lv_label_set_text(g_espnow_node_detail.system_row_label, system_text);
+    lv_label_set_text(g_espnow_node_detail.system_row_label, "UP: --:--:-- | --KB | FW: ---");
     lv_obj_set_style_text_color(g_espnow_node_detail.system_row_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(g_espnow_node_detail.system_row_label, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(g_espnow_node_detail.system_row_label, 5, 65);
     
-    // Additional compile time information (gray color for 4th row)
+    // Additional compile time information (placeholder value)
     lv_obj_t *compile_label = lv_label_create(scr);
-    char compile_text[40];
-    snprintf(compile_text, sizeof(compile_text), "Built: %s", g_node_data.compile_time);
-    lv_label_set_text(compile_label, compile_text);
-    lv_obj_set_style_text_color(compile_label, lv_color_hex(0x808080), LV_PART_MAIN); // Gray color
-    lv_obj_set_style_text_font(compile_label, &lv_font_montserrat_14, LV_PART_MAIN);   // Same font size
+    lv_label_set_text(compile_label, "Built: ---");
+    lv_obj_set_style_text_color(compile_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(compile_label, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(compile_label, 5, 85);
+    
+    // Uptime at bottom-left (same as overview page)
+    g_espnow_node_detail.uptime_label = lv_label_create(scr);
+    char uptime_text[16];
+    format_uptime_string(uptime_text, sizeof(uptime_text));
+    lv_label_set_text(g_espnow_node_detail.uptime_label, uptime_text);
+    lv_obj_set_style_text_color(g_espnow_node_detail.uptime_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_espnow_node_detail.uptime_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(g_espnow_node_detail.uptime_label, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_pos(g_espnow_node_detail.uptime_label, 5, 120);
+    
+    // Memory at bottom-right (same as overview page)
+    g_espnow_node_detail.memory_label = lv_label_create(scr);
+    char memory_text[16];
+    format_free_memory_string(memory_text, sizeof(memory_text));
+    lv_label_set_text(g_espnow_node_detail.memory_label, memory_text);
+    lv_obj_set_style_text_color(g_espnow_node_detail.memory_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_espnow_node_detail.memory_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(g_espnow_node_detail.memory_label, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_pos(g_espnow_node_detail.memory_label, 170, 120);  // Right-aligned
     
     ESP_LOGI(TAG, "ESP-NOW node detail page created successfully");
     return ESP_OK;
@@ -544,6 +547,20 @@ static esp_err_t espnow_node_detail_create(void)
 static esp_err_t espnow_node_detail_update(void)
 {
     ESP_LOGD(TAG, "Updating ESP-NOW node detail page...");
+    
+    // Always update uptime display (same as overview page)
+    if (g_espnow_node_detail.uptime_label != NULL) {
+        char uptime_text[16];
+        format_uptime_string(uptime_text, sizeof(uptime_text));
+        lv_label_set_text(g_espnow_node_detail.uptime_label, uptime_text);
+    }
+    
+    // Always update memory display (same as overview page)
+    if (g_espnow_node_detail.memory_label != NULL) {
+        char memory_text[16];
+        format_free_memory_string(memory_text, sizeof(memory_text));
+        lv_label_set_text(g_espnow_node_detail.memory_label, memory_text);
+    }
     
     // Get latest device information from ESP-NOW manager (first device at index 0)
     espnow_device_info_t device_info = {0};
@@ -577,18 +594,30 @@ static esp_err_t espnow_node_detail_update(void)
         ESP_LOGD(TAG, "📊 Using real device data: MAC=" MACSTR ", entries=%d, uptime=%lu", 
                 MAC2STR(device_info.mac_address), device_info.entry_count, device_info.uptime_seconds);
     } else {
-        ESP_LOGD(TAG, "📊 No real device data available, using demo data");
+        ESP_LOGD(TAG, "📊 No real device data available, we can return now");
+        return ESP_OK;
     }
     
     // Update network information (Device ID and RSSI)
     if (g_espnow_node_detail.network_row_label != NULL) {
         char network_text[80];
+        if (have_real_data) {
+            snprintf(network_text, sizeof(network_text), 
+                     "ID:%s | RSSI:%d",
+                     g_node_data.device_id,
+                     g_node_data.rssi
+            );
+        } else {
+            // Indicate demo data
+            snprintf(network_text, sizeof(network_text), 
+                     "ID:-------- | RSSI:----"
+            );
+        }
         snprintf(network_text, sizeof(network_text), 
-                 "%s%s | RSSI:%d%s",
-                 have_real_data ? "🔗" : "📍",  // Icon indicates real vs demo data
+                 "%s | RSSI:%d",
                  g_node_data.device_id,
-                 g_node_data.rssi,
-                 have_real_data ? "" : " (demo)");
+                 g_node_data.rssi
+        );
         lv_label_set_text(g_espnow_node_detail.network_row_label, network_text);
     }
     
@@ -618,8 +647,7 @@ static esp_err_t espnow_node_detail_update(void)
         lv_label_set_text(g_espnow_node_detail.system_row_label, system_text);
     }
     
-    ESP_LOGD(TAG, "ESP-NOW node detail page updated successfully (%s)", 
-             have_real_data ? "real data" : "demo data");
+    ESP_LOGD(TAG, "ESP-NOW node detail page updated successfully");
     return ESP_OK;
 }
 
