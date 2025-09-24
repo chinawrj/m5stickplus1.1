@@ -1193,6 +1193,15 @@ A: AXP192 needs time to calibrate, wait a few minutes and read again | AXP192需
 - [ ] MPU6886 IMU driver implementation | MPU6886 IMU驱动实现
 - [ ] TFT screen driver library integration | TFT屏幕驱动库集成
 - [ ] WiFi functionality demo | WiFi功能演示
+- [ ] **ESP-NOW ECDSA Key Exchange** | **ESP-NOW ECDSA密钥交互**
+  - [ ] ECDSA key pair generation | ECDSA密钥对生成
+  - [ ] Secure key exchange protocol | 安全密钥交换协议
+  - [ ] Message signing and verification | 消息签名和验证
+  - [ ] Device authentication mechanism | 设备认证机制
+  - [ ] PMK (Pairwise Master Key) derivation | PMK（成对主密钥）派生
+  - [ ] LMK (Local Master Key) generation | LMK（本地主密钥）生成
+  - [ ] Session key management | 会话密钥管理
+  - [ ] Key rotation and refresh mechanism | 密钥轮换和刷新机制
 - [ ] Low power mode optimization | 低功耗模式优化
 - [ ] OTA upgrade support | OTA升级支持
 - [ ] Extended example applications | 示例应用扩展
