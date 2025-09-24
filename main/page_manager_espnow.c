@@ -58,24 +58,6 @@ typedef struct {
     lv_obj_t *compile_label;
 } espnow_node_detail_t;
 
-// Global UI overview structure
-static espnow_overview_t g_espnow_overview = {0};
-
-// Global UI node detail structure
-static espnow_node_detail_t g_espnow_node_detail = {0};
-
-// ESP-NOW subpage management
-static espnow_subpage_id_t g_current_subpage = ESPNOW_SUBPAGE_OVERVIEW;
-
-// ESP-NOW data state management
-static atomic_bool g_espnow_data_updated = ATOMIC_VAR_INIT(false);
-
-// Current device index for node detail display (replaces hardcoded 0)
-static int g_current_device_index = 0;
-
-// Real ESP-NOW statistics from manager
-static espnow_stats_t g_espnow_stats = {0};
-
 // Node detail data structure (TLV format simulation)
 typedef struct {
     // Network data
@@ -102,8 +84,30 @@ typedef struct {
     char compile_time[33];           // TLV_TYPE_COMPILE_TIME (max 32 + null)
 } espnow_node_data_t;
 
-// Static node data (for demonstration - in real implementation, this would come from ESP-NOW messages)
-static espnow_node_data_t g_node_data = {
+/*=============================================================================
+ * 🏗️  PAGE MANAGEMENT VARIABLES (Core subpage state and control)
+ *=============================================================================*/
+static espnow_subpage_id_t g_current_subpage = ESPNOW_SUBPAGE_OVERVIEW;
+static atomic_bool g_espnow_data_updated = ATOMIC_VAR_INIT(false);
+
+/*=============================================================================
+ * 📊  OVERVIEW PAGE VARIABLES (ESP-NOW statistics and system monitoring)
+ *=============================================================================*/
+// Overview page UI objects
+static espnow_overview_t g_overview_ui = {0};
+
+// Overview page data
+static espnow_stats_t g_espnow_stats = {0};
+
+/*=============================================================================
+ * 🔍  NODE DETAIL PAGE VARIABLES (Individual device monitoring)
+ *=============================================================================*/
+// Node detail page UI objects
+static espnow_node_detail_t g_node_detail_ui = {0};
+
+// Node detail page data and state
+static int g_current_device_index = 0;
+static espnow_node_data_t g_current_node_data = {
     .mac_address = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
     .rssi = 0,
     .wifi_connected = false,
@@ -121,11 +125,18 @@ static espnow_node_data_t g_node_data = {
     .compile_time = "-"
 };
 
-// Previous state for change detection
-static uint32_t g_prev_uptime_sec = 0;      // Previous uptime in seconds
-static uint32_t g_prev_free_heap_kb = 0;    // Previous free heap in KB
-static uint32_t g_prev_packets_sent = 0;    // Previous sent packets count
-static uint32_t g_prev_packets_received = 0; // Previous received packets count
+/*=============================================================================
+ * 🔄  SHARED SYSTEM VARIABLES (Change detection and system state)
+ *=============================================================================*/
+// Previous state tracking for both pages
+static uint32_t g_prev_uptime_sec = 0;
+static uint32_t g_prev_free_heap_kb = 0;
+static uint32_t g_prev_packets_sent = 0;
+static uint32_t g_prev_packets_received = 0;
+
+/*=============================================================================
+ * 🔧  HELPER FUNCTIONS (Utility functions shared between pages)
+ *=============================================================================*/
 
 // Helper function to get WiFi MAC address as formatted string
 static esp_err_t get_wifi_mac_string(char *mac_str, size_t mac_str_size)
@@ -168,13 +179,21 @@ static void format_free_memory_string(char *buffer, size_t buffer_size)
     snprintf(buffer, buffer_size, "%"PRIu32" KB", free_heap_kb);
 }
 
-// Internal functions
+/*=============================================================================
+ * 📋  FUNCTION DECLARATIONS (Forward declarations organized by functionality)
+ *=============================================================================*/
+
+// Overview page functions
 static esp_err_t espnow_overview_create(void);
 static esp_err_t espnow_overview_update(void);
 static esp_err_t espnow_overview_destroy(void);
+
+// Node detail page functions  
 static esp_err_t espnow_node_detail_create(void);
 static esp_err_t espnow_node_detail_update(void);
 static esp_err_t espnow_node_detail_destroy(void);
+
+// Main page interface functions
 static esp_err_t espnow_page_init(void);
 static esp_err_t espnow_page_create(void);
 static esp_err_t espnow_page_update(void);
@@ -187,6 +206,10 @@ static esp_err_t espnow_subpage_switch(espnow_subpage_id_t subpage_id);
 static esp_err_t espnow_subpage_create_current(void);
 static esp_err_t espnow_subpage_update_current(void);
 static esp_err_t espnow_subpage_destroy_current(void);
+
+/*=============================================================================
+ * 🎮  PAGE CONTROLLER INTERFACE (Public API implementation)
+ *=============================================================================*/
 
 // Page controller interface implementation
 static const page_controller_t espnow_controller = {
@@ -205,15 +228,19 @@ const page_controller_t* get_espnow_page_controller(void)
     return &espnow_controller;
 }
 
+/*=============================================================================
+ * 🔄  MAIN PAGE INTERFACE IMPLEMENTATION (Page lifecycle management)
+ *=============================================================================*/
+
 static esp_err_t espnow_page_init(void)
 {
     ESP_LOGI(TAG, "Initializing ESP-NOW page module");
     
     // Reset UI object pointers in overview structure
-    memset(&g_espnow_overview, 0, sizeof(espnow_overview_t));
+    memset(&g_overview_ui, 0, sizeof(espnow_overview_t));
     
     // Reset UI object pointers in node detail structure
-    memset(&g_espnow_node_detail, 0, sizeof(espnow_node_detail_t));
+    memset(&g_node_detail_ui, 0, sizeof(espnow_node_detail_t));
     
     // Initialize subpage state
     g_current_subpage = ESPNOW_SUBPAGE_OVERVIEW;
@@ -340,6 +367,10 @@ void espnow_page_notify_data_update(void)
     atomic_store(&g_espnow_data_updated, true);
 }
 
+/*=============================================================================
+ * 📊  OVERVIEW PAGE IMPLEMENTATION (ESP-NOW statistics and system monitoring)
+ *=============================================================================*/
+
 // Internal UI creation function
 static esp_err_t espnow_overview_create(void)
 {
@@ -367,7 +398,7 @@ static esp_err_t espnow_overview_create(void)
     lv_obj_set_style_text_font(title, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(title, 60, 5);
     // Store in overview structure for debugging
-    g_espnow_overview.title_label = title;
+    g_overview_ui.title_label = title;
 
     // MAC Address display (moved up to replace status)
     lv_obj_t *mac_label = lv_label_create(scr);
@@ -381,45 +412,45 @@ static esp_err_t espnow_overview_create(void)
     lv_obj_set_style_text_font(mac_label, &lv_font_montserrat_18, LV_PART_MAIN);
     lv_obj_set_pos(mac_label, 10, 30);
     // Store in overview structure for debugging
-    g_espnow_overview.mac_label = mac_label;
+    g_overview_ui.mac_label = mac_label;
     
     // Send counter (moved up)
-    g_espnow_overview.sent_label = lv_label_create(scr);
+    g_overview_ui.sent_label = lv_label_create(scr);
     char sent_text[32];
     snprintf(sent_text, sizeof(sent_text), "Sent: %"PRIu32" packets", g_espnow_stats.packets_sent);
-    lv_label_set_text(g_espnow_overview.sent_label, sent_text);
-    lv_obj_set_style_text_color(g_espnow_overview.sent_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_espnow_overview.sent_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_overview.sent_label, 10, 52);
+    lv_label_set_text(g_overview_ui.sent_label, sent_text);
+    lv_obj_set_style_text_color(g_overview_ui.sent_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_overview_ui.sent_label, &lv_font_montserrat_18, LV_PART_MAIN);
+    lv_obj_set_pos(g_overview_ui.sent_label, 10, 52);
     
     // Receive counter (moved up)
-    g_espnow_overview.recv_label = lv_label_create(scr);
+    g_overview_ui.recv_label = lv_label_create(scr);
     char recv_text[32];
     snprintf(recv_text, sizeof(recv_text), "Received: %"PRIu32" packets", g_espnow_stats.packets_received);
-    lv_label_set_text(g_espnow_overview.recv_label, recv_text);
-    lv_obj_set_style_text_color(g_espnow_overview.recv_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_espnow_overview.recv_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_overview.recv_label, 10, 74);
+    lv_label_set_text(g_overview_ui.recv_label, recv_text);
+    lv_obj_set_style_text_color(g_overview_ui.recv_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_overview_ui.recv_label, &lv_font_montserrat_18, LV_PART_MAIN);
+    lv_obj_set_pos(g_overview_ui.recv_label, 10, 74);
     
     // Uptime at bottom-left
-    g_espnow_overview.uptime_label = lv_label_create(scr);
+    g_overview_ui.uptime_label = lv_label_create(scr);
     char uptime_text[16];
     format_uptime_string(uptime_text, sizeof(uptime_text));
-    lv_label_set_text(g_espnow_overview.uptime_label, uptime_text);
-    lv_obj_set_style_text_color(g_espnow_overview.uptime_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_espnow_overview.uptime_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_opa(g_espnow_overview.uptime_label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_overview.uptime_label, 5, 120);
+    lv_label_set_text(g_overview_ui.uptime_label, uptime_text);
+    lv_obj_set_style_text_color(g_overview_ui.uptime_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_overview_ui.uptime_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(g_overview_ui.uptime_label, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_pos(g_overview_ui.uptime_label, 5, 120);
     
     // Memory at bottom-right
-    g_espnow_overview.memory_label = lv_label_create(scr);
+    g_overview_ui.memory_label = lv_label_create(scr);
     char memory_text[16];
     format_free_memory_string(memory_text, sizeof(memory_text));
-    lv_label_set_text(g_espnow_overview.memory_label, memory_text);
-    lv_obj_set_style_text_color(g_espnow_overview.memory_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_espnow_overview.memory_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_opa(g_espnow_overview.memory_label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_overview.memory_label, 170, 120);  // Right-aligned
+    lv_label_set_text(g_overview_ui.memory_label, memory_text);
+    lv_obj_set_style_text_color(g_overview_ui.memory_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_overview_ui.memory_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(g_overview_ui.memory_label, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_pos(g_overview_ui.memory_label, 170, 120);  // Right-aligned
     
     return ESP_OK;
 }
@@ -435,30 +466,30 @@ static esp_err_t espnow_overview_update(void)
     }
     
     // Update uptime display
-    if (g_espnow_overview.uptime_label != NULL) {
+    if (g_overview_ui.uptime_label != NULL) {
         char uptime_text[16];
         format_uptime_string(uptime_text, sizeof(uptime_text));
-        lv_label_set_text(g_espnow_overview.uptime_label, uptime_text);
+        lv_label_set_text(g_overview_ui.uptime_label, uptime_text);
     }
     
     // Update memory display
-    if (g_espnow_overview.memory_label != NULL) {
+    if (g_overview_ui.memory_label != NULL) {
         char memory_text[16];
         format_free_memory_string(memory_text, sizeof(memory_text));
-        lv_label_set_text(g_espnow_overview.memory_label, memory_text);
+        lv_label_set_text(g_overview_ui.memory_label, memory_text);
     }
     
     // Update packet statistics
-    if (g_espnow_overview.sent_label != NULL) {
+    if (g_overview_ui.sent_label != NULL) {
         char sent_text[32];
         snprintf(sent_text, sizeof(sent_text), "Sent: %"PRIu32" packets", g_espnow_stats.packets_sent);
-        lv_label_set_text(g_espnow_overview.sent_label, sent_text);
+        lv_label_set_text(g_overview_ui.sent_label, sent_text);
     }
     
-    if (g_espnow_overview.recv_label != NULL) {
+    if (g_overview_ui.recv_label != NULL) {
         char recv_text[32];
         snprintf(recv_text, sizeof(recv_text), "Received: %"PRIu32" packets", g_espnow_stats.packets_received);
-        lv_label_set_text(g_espnow_overview.recv_label, recv_text);
+        lv_label_set_text(g_overview_ui.recv_label, recv_text);
     }
     
     return ESP_OK;
@@ -472,10 +503,14 @@ static esp_err_t espnow_overview_destroy(void)
     lv_obj_clean(scr);
     
     // Reset object pointers in overview structure
-    memset(&g_espnow_overview, 0, sizeof(espnow_overview_t));
+    memset(&g_overview_ui, 0, sizeof(espnow_overview_t));
     
     return ESP_OK;
 }
+
+/*=============================================================================
+ * 🔍  NODE DETAIL PAGE IMPLEMENTATION (Individual device monitoring)
+ *=============================================================================*/
 
 // Node detail page UI creation function
 static esp_err_t espnow_node_detail_create(void)
@@ -492,66 +527,66 @@ static esp_err_t espnow_node_detail_create(void)
     lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     
     // Title with page indicator
-    g_espnow_node_detail.title_label = lv_label_create(scr);
-    lv_label_set_text(g_espnow_node_detail.title_label, "Node Detail [2/2]");
-    lv_obj_set_style_text_color(g_espnow_node_detail.title_label, lv_color_hex(0x00FFFF), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_espnow_node_detail.title_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_node_detail.title_label, 50, 5);
+    g_node_detail_ui.title_label = lv_label_create(scr);
+    lv_label_set_text(g_node_detail_ui.title_label, "Node Detail [2/2]");
+    lv_obj_set_style_text_color(g_node_detail_ui.title_label, lv_color_hex(0x00FFFF), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_node_detail_ui.title_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_pos(g_node_detail_ui.title_label, 50, 5);
     
     // Row 1: Device ID and Network Information (placeholder values)
-    g_espnow_node_detail.network_row_label = lv_label_create(scr);
-    lv_label_set_text(g_espnow_node_detail.network_row_label, "ID: --- | RSSI: ---");
-    lv_obj_set_style_text_color(g_espnow_node_detail.network_row_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_espnow_node_detail.network_row_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_node_detail.network_row_label, 5, 25);
+    g_node_detail_ui.network_row_label = lv_label_create(scr);
+    lv_label_set_text(g_node_detail_ui.network_row_label, "ID: --- | RSSI: ---");
+    lv_obj_set_style_text_color(g_node_detail_ui.network_row_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_node_detail_ui.network_row_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_pos(g_node_detail_ui.network_row_label, 5, 25);
     
     // Row 2: Electrical Measurements - Voltage & Current (placeholder values)
-    g_espnow_node_detail.electrical_row_label = lv_label_create(scr);
-    lv_label_set_text(g_espnow_node_detail.electrical_row_label, "---.-V | --.-A");
-    lv_obj_set_style_text_color(g_espnow_node_detail.electrical_row_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_espnow_node_detail.electrical_row_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_node_detail.electrical_row_label, 5, 45);
+    g_node_detail_ui.electrical_row_label = lv_label_create(scr);
+    lv_label_set_text(g_node_detail_ui.electrical_row_label, "---.-V | --.-A");
+    lv_obj_set_style_text_color(g_node_detail_ui.electrical_row_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_node_detail_ui.electrical_row_label, &lv_font_montserrat_18, LV_PART_MAIN);
+    lv_obj_set_pos(g_node_detail_ui.electrical_row_label, 5, 45);
     
     // Row 3: Power Information (placeholder value)
-    g_espnow_node_detail.power_label = lv_label_create(scr);
-    lv_label_set_text(g_espnow_node_detail.power_label, "-----.-W");
-    lv_obj_set_style_text_color(g_espnow_node_detail.power_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_espnow_node_detail.power_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_node_detail.power_label, 5, 65);
+    g_node_detail_ui.power_label = lv_label_create(scr);
+    lv_label_set_text(g_node_detail_ui.power_label, "-----.-W");
+    lv_obj_set_style_text_color(g_node_detail_ui.power_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_node_detail_ui.power_label, &lv_font_montserrat_18, LV_PART_MAIN);
+    lv_obj_set_pos(g_node_detail_ui.power_label, 5, 65);
     
     // Row 4: System Information (placeholder values)
-    g_espnow_node_detail.system_row_label = lv_label_create(scr);
-    lv_label_set_text(g_espnow_node_detail.system_row_label, "UP: --:--:-- | --KB | FW: ---");
-    lv_obj_set_style_text_color(g_espnow_node_detail.system_row_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_espnow_node_detail.system_row_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_node_detail.system_row_label, 5, 85);
+    g_node_detail_ui.system_row_label = lv_label_create(scr);
+    lv_label_set_text(g_node_detail_ui.system_row_label, "UP: --:--:-- | --KB | FW: ---");
+    lv_obj_set_style_text_color(g_node_detail_ui.system_row_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_node_detail_ui.system_row_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_pos(g_node_detail_ui.system_row_label, 5, 85);
     
     // Row 5: Compile time information (placeholder value)
-    g_espnow_node_detail.compile_label = lv_label_create(scr);
-    lv_label_set_text(g_espnow_node_detail.compile_label, "Built: ---");
-    lv_obj_set_style_text_color(g_espnow_node_detail.compile_label, lv_color_white(), LV_PART_MAIN); // White color
-    lv_obj_set_style_text_font(g_espnow_node_detail.compile_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_node_detail.compile_label, 5, 105);
+    g_node_detail_ui.compile_label = lv_label_create(scr);
+    lv_label_set_text(g_node_detail_ui.compile_label, "Built: ---");
+    lv_obj_set_style_text_color(g_node_detail_ui.compile_label, lv_color_white(), LV_PART_MAIN); // White color
+    lv_obj_set_style_text_font(g_node_detail_ui.compile_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_pos(g_node_detail_ui.compile_label, 5, 105);
     
     // Uptime at bottom-left (same as overview page)
-    g_espnow_node_detail.uptime_label = lv_label_create(scr);
+    g_node_detail_ui.uptime_label = lv_label_create(scr);
     char uptime_text[16];
     format_uptime_string(uptime_text, sizeof(uptime_text));
-    lv_label_set_text(g_espnow_node_detail.uptime_label, uptime_text);
-    lv_obj_set_style_text_color(g_espnow_node_detail.uptime_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_espnow_node_detail.uptime_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_opa(g_espnow_node_detail.uptime_label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_node_detail.uptime_label, 5, 120);
+    lv_label_set_text(g_node_detail_ui.uptime_label, uptime_text);
+    lv_obj_set_style_text_color(g_node_detail_ui.uptime_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_node_detail_ui.uptime_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(g_node_detail_ui.uptime_label, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_pos(g_node_detail_ui.uptime_label, 5, 120);
     
     // Memory at bottom-right (same as overview page)
-    g_espnow_node_detail.memory_label = lv_label_create(scr);
+    g_node_detail_ui.memory_label = lv_label_create(scr);
     char memory_text[16];
     format_free_memory_string(memory_text, sizeof(memory_text));
-    lv_label_set_text(g_espnow_node_detail.memory_label, memory_text);
-    lv_obj_set_style_text_color(g_espnow_node_detail.memory_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_espnow_node_detail.memory_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_opa(g_espnow_node_detail.memory_label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_node_detail.memory_label, 170, 120);  // Right-aligned
+    lv_label_set_text(g_node_detail_ui.memory_label, memory_text);
+    lv_obj_set_style_text_color(g_node_detail_ui.memory_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_node_detail_ui.memory_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(g_node_detail_ui.memory_label, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_pos(g_node_detail_ui.memory_label, 170, 120);  // Right-aligned
     
     ESP_LOGI(TAG, "ESP-NOW node detail page created successfully");
     return ESP_OK;
@@ -563,17 +598,17 @@ static esp_err_t espnow_node_detail_update(void)
     ESP_LOGD(TAG, "Updating ESP-NOW node detail page...");
     
     // Always update uptime display (same as overview page)
-    if (g_espnow_node_detail.uptime_label != NULL) {
+    if (g_node_detail_ui.uptime_label != NULL) {
         char uptime_text[16];
         format_uptime_string(uptime_text, sizeof(uptime_text));
-        lv_label_set_text(g_espnow_node_detail.uptime_label, uptime_text);
+        lv_label_set_text(g_node_detail_ui.uptime_label, uptime_text);
     }
     
     // Always update memory display (same as overview page)
-    if (g_espnow_node_detail.memory_label != NULL) {
+    if (g_node_detail_ui.memory_label != NULL) {
         char memory_text[16];
         format_free_memory_string(memory_text, sizeof(memory_text));
-        lv_label_set_text(g_espnow_node_detail.memory_label, memory_text);
+        lv_label_set_text(g_node_detail_ui.memory_label, memory_text);
     }
     
     // Get latest device information from ESP-NOW manager (current device index)
@@ -582,26 +617,26 @@ static esp_err_t espnow_node_detail_update(void)
     
     if (espnow_manager_get_device_info(g_current_device_index, &device_info) == ESP_OK) {
         // Update global node data with real device information
-        memcpy(g_node_data.mac_address, device_info.mac_address, 6);
-        g_node_data.rssi = device_info.rssi;
-        g_node_data.uptime_seconds = device_info.uptime_seconds;
-        g_node_data.ac_voltage = device_info.ac_voltage;
-        g_node_data.ac_current = device_info.ac_current;
-        g_node_data.ac_power = device_info.ac_power;
-        g_node_data.power_factor = device_info.ac_power_factor;
-        g_node_data.temperature = device_info.temperature;
-        g_node_data.free_memory_kb = device_info.free_memory_kb;
-        g_node_data.error_code = device_info.error_code;
+        memcpy(g_current_node_data.mac_address, device_info.mac_address, 6);
+        g_current_node_data.rssi = device_info.rssi;
+        g_current_node_data.uptime_seconds = device_info.uptime_seconds;
+        g_current_node_data.ac_voltage = device_info.ac_voltage;
+        g_current_node_data.ac_current = device_info.ac_current;
+        g_current_node_data.ac_power = device_info.ac_power;
+        g_current_node_data.power_factor = device_info.ac_power_factor;
+        g_current_node_data.temperature = device_info.temperature;
+        g_current_node_data.free_memory_kb = device_info.free_memory_kb;
+        g_current_node_data.error_code = device_info.error_code;
         
         // Update string fields if available
         if (strlen(device_info.device_id) > 0) {
-            strncpy(g_node_data.device_id, device_info.device_id, sizeof(g_node_data.device_id) - 1);
+            strncpy(g_current_node_data.device_id, device_info.device_id, sizeof(g_current_node_data.device_id) - 1);
         }
         if (strlen(device_info.firmware_version) > 0) {
-            strncpy(g_node_data.firmware_version, device_info.firmware_version, sizeof(g_node_data.firmware_version) - 1);
+            strncpy(g_current_node_data.firmware_version, device_info.firmware_version, sizeof(g_current_node_data.firmware_version) - 1);
         }
         if (strlen(device_info.compile_time) > 0) {
-            strncpy(g_node_data.compile_time, device_info.compile_time, sizeof(g_node_data.compile_time) - 1);
+            strncpy(g_current_node_data.compile_time, device_info.compile_time, sizeof(g_current_node_data.compile_time) - 1);
         }
         
         have_real_data = true;
@@ -613,13 +648,13 @@ static esp_err_t espnow_node_detail_update(void)
     }
     
     // Update network information (Device ID and RSSI)
-    if (g_espnow_node_detail.network_row_label != NULL) {
+    if (g_node_detail_ui.network_row_label != NULL) {
         char network_text[80];
         if (have_real_data) {
             snprintf(network_text, sizeof(network_text), 
                      "ID:%s | RSSI:%d",
-                     g_node_data.device_id,
-                     g_node_data.rssi
+                     g_current_node_data.device_id,
+                     g_current_node_data.rssi
             );
         } else {
             // Indicate demo data
@@ -629,49 +664,49 @@ static esp_err_t espnow_node_detail_update(void)
         }
         snprintf(network_text, sizeof(network_text), 
                  "%s | RSSI:%d",
-                 g_node_data.device_id,
-                 g_node_data.rssi
+                 g_current_node_data.device_id,
+                 g_current_node_data.rssi
         );
-        lv_label_set_text(g_espnow_node_detail.network_row_label, network_text);
+        lv_label_set_text(g_node_detail_ui.network_row_label, network_text);
     }
     
     // Update Row 2: Electrical measurements - Voltage & Current
-    if (g_espnow_node_detail.electrical_row_label != NULL) {
+    if (g_node_detail_ui.electrical_row_label != NULL) {
         char electrical_text[80];
         snprintf(electrical_text, sizeof(electrical_text), 
                  "%.1fV | %.2fA",
-                 g_node_data.ac_voltage,
-                 g_node_data.ac_current
+                 g_current_node_data.ac_voltage,
+                 g_current_node_data.ac_current
         );
-        lv_label_set_text(g_espnow_node_detail.electrical_row_label, electrical_text);
+        lv_label_set_text(g_node_detail_ui.electrical_row_label, electrical_text);
     }
     
     // Update Row 3: Power information
-    if (g_espnow_node_detail.power_label != NULL) {
+    if (g_node_detail_ui.power_label != NULL) {
         char power_text[20];
-        snprintf(power_text, sizeof(power_text), "%.1fW", g_node_data.ac_power);
-        lv_label_set_text(g_espnow_node_detail.power_label, power_text);
+        snprintf(power_text, sizeof(power_text), "%.1fW", g_current_node_data.ac_power);
+        lv_label_set_text(g_node_detail_ui.power_label, power_text);
     }
     
     // Update Row 4: System information (Uptime, Memory, Firmware)
-    if (g_espnow_node_detail.system_row_label != NULL) {
+    if (g_node_detail_ui.system_row_label != NULL) {
         char system_text[80];
-        uint32_t hours = g_node_data.uptime_seconds / 3600;
-        uint32_t minutes = (g_node_data.uptime_seconds % 3600) / 60;
-        uint32_t seconds = g_node_data.uptime_seconds % 60;
+        uint32_t hours = g_current_node_data.uptime_seconds / 3600;
+        uint32_t minutes = (g_current_node_data.uptime_seconds % 3600) / 60;
+        uint32_t seconds = g_current_node_data.uptime_seconds % 60;
         snprintf(system_text, sizeof(system_text), 
                  "UP:%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32 " | %" PRIu32 "KB | FW:%s",
                  hours, minutes, seconds,
-                 g_node_data.free_memory_kb,
-                 g_node_data.firmware_version);
-        lv_label_set_text(g_espnow_node_detail.system_row_label, system_text);
+                 g_current_node_data.free_memory_kb,
+                 g_current_node_data.firmware_version);
+        lv_label_set_text(g_node_detail_ui.system_row_label, system_text);
     }
     
     // Update Row 5: Compile time information
-    if (g_espnow_node_detail.compile_label != NULL) {
+    if (g_node_detail_ui.compile_label != NULL) {
         char compile_text[40];
-        snprintf(compile_text, sizeof(compile_text), "Built: %s", g_node_data.compile_time);
-        lv_label_set_text(g_espnow_node_detail.compile_label, compile_text);
+        snprintf(compile_text, sizeof(compile_text), "Built: %s", g_current_node_data.compile_time);
+        lv_label_set_text(g_node_detail_ui.compile_label, compile_text);
     }
     
     ESP_LOGD(TAG, "ESP-NOW node detail page updated successfully");
@@ -688,11 +723,15 @@ static esp_err_t espnow_node_detail_destroy(void)
     lv_obj_clean(scr);
     
     // Reset object pointers in node detail structure
-    memset(&g_espnow_node_detail, 0, sizeof(espnow_node_detail_t));
+    memset(&g_node_detail_ui, 0, sizeof(espnow_node_detail_t));
     
     ESP_LOGI(TAG, "ESP-NOW node detail page destroyed successfully");
     return ESP_OK;
 }
+
+/*=============================================================================
+ * ⌨️   KEY EVENT HANDLING (User input processing)
+ *=============================================================================*/
 
 // Page-specific key event handler
 static bool espnow_page_handle_key_event(uint32_t key)
@@ -749,6 +788,10 @@ static bool espnow_page_handle_key_event(uint32_t key)
             return false;  // Let global handler process this key
     }
 }
+
+/*=============================================================================
+ * 📑  SUBPAGE MANAGEMENT IMPLEMENTATION (Overview/Node Detail switching)
+ *=============================================================================*/
 
 // Subpage management functions implementation
 
