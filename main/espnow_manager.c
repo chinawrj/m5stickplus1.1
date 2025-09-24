@@ -73,6 +73,7 @@ typedef struct {
     stored_tlv_entry_t tlv_entries[MAX_TLV_ENTRIES_PER_DEVICE];  // TLV entries for this device
     uint16_t entry_count;           // Number of valid TLV entries
     uint32_t last_seen;             // Last time we received data from this device
+    int8_t rssi;                    // Latest RSSI value from ESP-NOW reception
     bool in_use;                    // Whether this device slot is in use
     char device_name[32];           // Device friendly name (optional)
 } device_tlv_storage_t;
@@ -95,8 +96,8 @@ static esp_err_t tlv_storage_init(void);
 static void tlv_storage_deinit(void);
 static device_tlv_storage_t* find_device_by_mac(const uint8_t *mac_addr);
 static device_tlv_storage_t* get_or_create_device(const uint8_t *mac_addr);
-static esp_err_t store_device_tlv_data(const uint8_t *mac_addr, const uint8_t *tlv_data, size_t data_len);
-static void process_received_tlv_data(const uint8_t *mac_addr, const uint8_t *data, size_t data_len);
+static esp_err_t store_device_tlv_data(const uint8_t *mac_addr, const uint8_t *tlv_data, size_t data_len, int8_t rssi);
+static void process_received_tlv_data(const uint8_t *mac_addr, const uint8_t *data, size_t data_len, int8_t rssi);
 static void print_device_tlv_info(const device_tlv_storage_t *device);
 
 // Device Discovery Task Functions
@@ -406,8 +407,8 @@ esp_err_t espnow_manager_get_device_info(int device_index, espnow_device_info_t 
         device_info->last_seen = device->last_seen;
         device_info->entry_count = device->entry_count;
         
-        // Initialize with default values
-        device_info->rssi = -70; // Default RSSI
+        // Initialize with stored RSSI from actual ESP-NOW reception
+        device_info->rssi = device->rssi;
         device_info->uptime_seconds = 0;
         device_info->ac_voltage = 0.0f;
         device_info->ac_current = 0.0f;
@@ -1085,8 +1086,8 @@ static void espnow_recv_only_task(void *pvParameter)
                     ESP_LOGI(TAG, "✅ TLV data parsed successfully (%d entries), storing for device " MACSTR, 
                              parse_result, MAC2STR(recv_cb->mac_addr));
                     
-                    // Process and store the TLV data using MAC address as index
-                    process_received_tlv_data(recv_cb->mac_addr, recv_cb->data, recv_cb->data_len);
+                    // Process and store the TLV data using MAC address as index (with RSSI)
+                    process_received_tlv_data(recv_cb->mac_addr, recv_cb->data, recv_cb->data_len, recv_cb->rssi);
                 } else {
                     ESP_LOGW(TAG, "⚠️ TLV parsing failed or no valid TLV data found");
                 }
@@ -1208,6 +1209,7 @@ static device_tlv_storage_t* get_or_create_device(const uint8_t *mac_addr)
             g_tlv_devices[i].in_use = true;
             g_tlv_devices[i].entry_count = 0;
             g_tlv_devices[i].last_seen = xTaskGetTickCount();
+            g_tlv_devices[i].rssi = -100; // Initialize with weak signal until actual reception
             
             // Initialize all TLV entries as invalid
             for (int j = 0; j < MAX_TLV_ENTRIES_PER_DEVICE; j++) {
@@ -1232,9 +1234,10 @@ static device_tlv_storage_t* get_or_create_device(const uint8_t *mac_addr)
  * @param mac_addr MAC address of the device
  * @param tlv_data TLV data buffer
  * @param data_len Length of TLV data
+ * @param rssi RSSI value from ESP-NOW reception
  * @return ESP_OK on success, ESP_FAIL on error
  */
-static esp_err_t store_device_tlv_data(const uint8_t *mac_addr, const uint8_t *tlv_data, size_t data_len)
+static esp_err_t store_device_tlv_data(const uint8_t *mac_addr, const uint8_t *tlv_data, size_t data_len, int8_t rssi)
 {
     if (mac_addr == NULL || tlv_data == NULL || data_len == 0 || g_tlv_mutex == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -1257,8 +1260,9 @@ static esp_err_t store_device_tlv_data(const uint8_t *mac_addr, const uint8_t *t
             break;
         }
         
-        // Update last seen timestamp
+        // Update last seen timestamp and RSSI
         device->last_seen = xTaskGetTickCount();
+        device->rssi = rssi;  // Store the actual RSSI from ESP-NOW reception
         
         // Parse TLV data and store individual entries
         size_t offset = 0;
@@ -1458,7 +1462,7 @@ static void print_device_tlv_info(const device_tlv_storage_t *device)
  * @param data Raw received data
  * @param data_len Length of received data
  */
-static void process_received_tlv_data(const uint8_t *mac_addr, const uint8_t *data, size_t data_len)
+static void process_received_tlv_data(const uint8_t *mac_addr, const uint8_t *data, size_t data_len, int8_t rssi)
 {
     if (mac_addr == NULL || data == NULL || data_len == 0) {
         return;
@@ -1467,8 +1471,8 @@ static void process_received_tlv_data(const uint8_t *mac_addr, const uint8_t *da
     ESP_LOGI(TAG, "🗂️ Processing TLV data from " MACSTR " (%zu bytes)", 
              MAC2STR(mac_addr), data_len);
     
-    // Store the TLV data for this device
-    esp_err_t ret = store_device_tlv_data(mac_addr, data, data_len);
+    // Store the TLV data for this device (including RSSI)
+    esp_err_t ret = store_device_tlv_data(mac_addr, data, data_len, rssi);
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "✅ TLV data stored successfully");
         
