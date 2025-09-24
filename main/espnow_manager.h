@@ -41,7 +41,7 @@ typedef struct {
     
     // System information (parsed from TLV entries)
     uint32_t uptime_seconds;        // TLV_TYPE_UPTIME
-    char device_id[17];             // TLV_TYPE_DEVICE_ID (max 16 + null)
+    char device_id[32];             // TLV_TYPE_DEVICE_ID (max 32 + null)
     char firmware_version[17];      // TLV_TYPE_FIRMWARE_VER (max 16 + null)
     char compile_time[33];          // TLV_TYPE_COMPILE_TIME (max 32 + null)
     

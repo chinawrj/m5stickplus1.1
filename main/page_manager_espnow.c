@@ -51,7 +51,8 @@ typedef struct {
     lv_obj_t *uptime_label;     // System uptime display (bottom-left)
     lv_obj_t *memory_label;     // Free memory display (bottom-right)
     
-    // Note: Compile time is displayed as a separate local label (not stored in this struct)
+    // Additional information labels
+    lv_obj_t *compile_label;
 } espnow_node_detail_t;
 
 // Global UI overview structure
@@ -513,11 +514,11 @@ static esp_err_t espnow_node_detail_create(void)
     lv_obj_set_pos(g_espnow_node_detail.system_row_label, 5, 65);
     
     // Additional compile time information (placeholder value)
-    lv_obj_t *compile_label = lv_label_create(scr);
-    lv_label_set_text(compile_label, "Built: ---");
-    lv_obj_set_style_text_color(compile_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(compile_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_pos(compile_label, 5, 85);
+    g_espnow_node_detail.compile_label = lv_label_create(scr);
+    lv_label_set_text(g_espnow_node_detail.compile_label, "Built: ---");
+    lv_obj_set_style_text_color(g_espnow_node_detail.compile_label, lv_color_white(), LV_PART_MAIN); // White color
+    lv_obj_set_style_text_font(g_espnow_node_detail.compile_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_pos(g_espnow_node_detail.compile_label, 5, 85);
     
     // Uptime at bottom-left (same as overview page)
     g_espnow_node_detail.uptime_label = lv_label_create(scr);
@@ -645,6 +646,13 @@ static esp_err_t espnow_node_detail_update(void)
                  g_node_data.free_memory_kb,
                  g_node_data.firmware_version);
         lv_label_set_text(g_espnow_node_detail.system_row_label, system_text);
+    }
+    
+    // Update compile time information
+    if (g_espnow_node_detail.compile_label != NULL) {
+        char compile_text[40];
+        snprintf(compile_text, sizeof(compile_text), "Built: %s", g_node_data.compile_time);
+        lv_label_set_text(g_espnow_node_detail.compile_label, compile_text);
     }
     
     ESP_LOGD(TAG, "ESP-NOW node detail page updated successfully");
