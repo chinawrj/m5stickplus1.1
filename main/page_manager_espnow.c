@@ -38,13 +38,16 @@ typedef struct {
     // Row 1: Device ID and Network Information (2 items)
     lv_obj_t *network_row_label; // "ID: M5NanoC6-123 | RSSI: -XX"
     
-    // Row 2: Electrical Measurements (3 items)
-    lv_obj_t *electrical_row_label; // "220.5V | 2.35A | 520W"
+    // Row 2: Electrical Measurements - Voltage & Current (2 items)
+    lv_obj_t *electrical_row_label; // "220.5V | 2.35A"
     
-    // Row 3: System Information with Firmware (3 items)  
+    // Row 3: Power Information (1 item)
+    lv_obj_t *power_label;        // "520.0W"
+    
+    // Row 4: System Information with Firmware (3 items)  
     lv_obj_t *system_row_label;   // "UP: 12:34:56 | 45KB | FW: v1.2.3"
     
-    // Row 4: Version Information (not used anymore - FW moved to system_row)
+    // Row 5: Version Information (not used anymore - FW moved to system_row)
     lv_obj_t *version_row_label;  // Unused, kept for structure compatibility
     
     // Bottom status labels (like overview page)
@@ -499,26 +502,33 @@ static esp_err_t espnow_node_detail_create(void)
     lv_obj_set_style_text_font(g_espnow_node_detail.network_row_label, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(g_espnow_node_detail.network_row_label, 5, 25);
     
-    // Row 2: Electrical Measurements (placeholder values)
+    // Row 2: Electrical Measurements - Voltage & Current (placeholder values)
     g_espnow_node_detail.electrical_row_label = lv_label_create(scr);
-    lv_label_set_text(g_espnow_node_detail.electrical_row_label, "---V | ---A | ---W");
+    lv_label_set_text(g_espnow_node_detail.electrical_row_label, "---.-V | --.-A");
     lv_obj_set_style_text_color(g_espnow_node_detail.electrical_row_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(g_espnow_node_detail.electrical_row_label, &lv_font_montserrat_18, LV_PART_MAIN);
     lv_obj_set_pos(g_espnow_node_detail.electrical_row_label, 5, 45);
     
-    // Row 3: System Information (placeholder values)
+    // Row 3: Power Information (placeholder value)
+    g_espnow_node_detail.power_label = lv_label_create(scr);
+    lv_label_set_text(g_espnow_node_detail.power_label, "-----.-W");
+    lv_obj_set_style_text_color(g_espnow_node_detail.power_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_espnow_node_detail.power_label, &lv_font_montserrat_18, LV_PART_MAIN);
+    lv_obj_set_pos(g_espnow_node_detail.power_label, 5, 65);
+    
+    // Row 4: System Information (placeholder values)
     g_espnow_node_detail.system_row_label = lv_label_create(scr);
     lv_label_set_text(g_espnow_node_detail.system_row_label, "UP: --:--:-- | --KB | FW: ---");
     lv_obj_set_style_text_color(g_espnow_node_detail.system_row_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(g_espnow_node_detail.system_row_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_node_detail.system_row_label, 5, 65);
+    lv_obj_set_pos(g_espnow_node_detail.system_row_label, 5, 85);
     
-    // Additional compile time information (placeholder value)
+    // Row 5: Compile time information (placeholder value)
     g_espnow_node_detail.compile_label = lv_label_create(scr);
     lv_label_set_text(g_espnow_node_detail.compile_label, "Built: ---");
     lv_obj_set_style_text_color(g_espnow_node_detail.compile_label, lv_color_white(), LV_PART_MAIN); // White color
     lv_obj_set_style_text_font(g_espnow_node_detail.compile_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_pos(g_espnow_node_detail.compile_label, 5, 85);
+    lv_obj_set_pos(g_espnow_node_detail.compile_label, 5, 105);
     
     // Uptime at bottom-left (same as overview page)
     g_espnow_node_detail.uptime_label = lv_label_create(scr);
@@ -622,19 +632,25 @@ static esp_err_t espnow_node_detail_update(void)
         lv_label_set_text(g_espnow_node_detail.network_row_label, network_text);
     }
     
-    // Update electrical measurements (simplified to match create function)
+    // Update Row 2: Electrical measurements - Voltage & Current
     if (g_espnow_node_detail.electrical_row_label != NULL) {
         char electrical_text[80];
         snprintf(electrical_text, sizeof(electrical_text), 
-                 "%.1fV | %.2fA | %.0fW%s",
+                 "%.1fV | %.2fA",
                  g_node_data.ac_voltage,
-                 g_node_data.ac_current,
-                 g_node_data.ac_power,
-                 have_real_data ? "" : " (demo)");
+                 g_node_data.ac_current
+        );
         lv_label_set_text(g_espnow_node_detail.electrical_row_label, electrical_text);
     }
     
-    // Update system information (Uptime, Memory, Firmware)
+    // Update Row 3: Power information
+    if (g_espnow_node_detail.power_label != NULL) {
+        char power_text[20];
+        snprintf(power_text, sizeof(power_text), "%.1fW", g_node_data.ac_power);
+        lv_label_set_text(g_espnow_node_detail.power_label, power_text);
+    }
+    
+    // Update Row 4: System information (Uptime, Memory, Firmware)
     if (g_espnow_node_detail.system_row_label != NULL) {
         char system_text[80];
         uint32_t hours = g_node_data.uptime_seconds / 3600;
@@ -648,7 +664,7 @@ static esp_err_t espnow_node_detail_update(void)
         lv_label_set_text(g_espnow_node_detail.system_row_label, system_text);
     }
     
-    // Update compile time information
+    // Update Row 5: Compile time information
     if (g_espnow_node_detail.compile_label != NULL) {
         char compile_text[40];
         snprintf(compile_text, sizeof(compile_text), "Built: %s", g_node_data.compile_time);
