@@ -556,11 +556,6 @@ esp_err_t espnow_manager_get_device_info(int device_index, espnow_device_info_t 
             }
         }
         
-        // If free memory was not parsed from TLV data, set to unknown/unavailable
-        // The TLV_TYPE_FREE_MEMORY case above will set the real value when available
-        if (device_info->free_memory_kb == 0) {
-            ESP_LOGD(TAG, "⚠️  No TLV_TYPE_FREE_MEMORY data received, memory info unavailable");
-        }
         
         result = ESP_OK;
         
