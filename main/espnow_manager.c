@@ -308,6 +308,69 @@ esp_err_t espnow_manager_get_stats(espnow_stats_t *stats)
     return ESP_OK;
 }
 
+esp_err_t espnow_manager_get_next_valid_device_index(int current_index, int *next_index)
+{
+    if (next_index == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (g_tlv_mutex == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    // Take mutex for thread safety
+    if (xSemaphoreTake(g_tlv_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
+    
+    esp_err_t result = ESP_ERR_NOT_FOUND;
+    int start_index = (current_index + 1) % MAX_TLV_DEVICES;
+    int search_index = start_index;
+    
+    // Search for next valid device, wrapping around if necessary
+    do {
+        if (g_tlv_devices[search_index].in_use) {
+            *next_index = search_index;
+            result = ESP_OK;
+            ESP_LOGI(TAG, "📱 Found next valid device at index %d (MAC: " MACSTR ")", 
+                     search_index, MAC2STR(g_tlv_devices[search_index].mac_address));
+            break;
+        }
+        search_index = (search_index + 1) % MAX_TLV_DEVICES;
+    } while (search_index != start_index);
+    
+    // If no next device found, try to stay on current device if it's valid
+    if (result != ESP_OK && current_index >= 0 && current_index < MAX_TLV_DEVICES) {
+        if (g_tlv_devices[current_index].in_use) {
+            *next_index = current_index;
+            result = ESP_OK;
+            ESP_LOGI(TAG, "📱 No next device found, staying on current device at index %d", current_index);
+        }
+    }
+    
+    // If still no valid device, default to first available device
+    if (result != ESP_OK) {
+        for (int i = 0; i < MAX_TLV_DEVICES; i++) {
+            if (g_tlv_devices[i].in_use) {
+                *next_index = i;
+                result = ESP_OK;
+                ESP_LOGI(TAG, "📱 No valid device found in sequence, using first available at index %d", i);
+                break;
+            }
+        }
+    }
+    
+    // Release mutex
+    xSemaphoreGive(g_tlv_mutex);
+    
+    if (result != ESP_OK) {
+        ESP_LOGW(TAG, "📱 No valid devices found in storage");
+        *next_index = 0; // Default fallback
+    }
+    
+    return result;
+}
+
 esp_err_t espnow_manager_get_device_info(int device_index, espnow_device_info_t *device_info)
 {
     if (device_info == NULL) {

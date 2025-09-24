@@ -70,6 +70,9 @@ static espnow_subpage_id_t g_current_subpage = ESPNOW_SUBPAGE_OVERVIEW;
 // ESP-NOW data state management
 static atomic_bool g_espnow_data_updated = ATOMIC_VAR_INIT(false);
 
+// Current device index for node detail display (replaces hardcoded 0)
+static int g_current_device_index = 0;
+
 // Real ESP-NOW statistics from manager
 static espnow_stats_t g_espnow_stats = {0};
 
@@ -573,11 +576,11 @@ static esp_err_t espnow_node_detail_update(void)
         lv_label_set_text(g_espnow_node_detail.memory_label, memory_text);
     }
     
-    // Get latest device information from ESP-NOW manager (first device at index 0)
+    // Get latest device information from ESP-NOW manager (current device index)
     espnow_device_info_t device_info = {0};
     bool have_real_data = false;
     
-    if (espnow_manager_get_device_info(0, &device_info) == ESP_OK) {
+    if (espnow_manager_get_device_info(g_current_device_index, &device_info) == ESP_OK) {
         // Update global node data with real device information
         memcpy(g_node_data.mac_address, device_info.mac_address, 6);
         g_node_data.rssi = device_info.rssi;
@@ -705,9 +708,20 @@ static bool espnow_page_handle_key_event(uint32_t key)
                 espnow_manager_send_test_packet();
                 return true;  // We handled this key
             } else if (g_current_subpage == ESPNOW_SUBPAGE_NODE_DETAIL) {
-                ESP_LOGI(TAG, "🔄 ESP-NOW node detail ENTER - Refresh data");
-                // Force data update for node detail
-                atomic_store(&g_espnow_data_updated, true);
+                ESP_LOGI(TAG, "🔄 ESP-NOW node detail ENTER - Switch to next device");
+                // Get next valid device index
+                int next_device_index = 0;
+                esp_err_t ret = espnow_manager_get_next_valid_device_index(g_current_device_index, &next_device_index);
+                if (ret == ESP_OK) {
+                    ESP_LOGI(TAG, "📱 Switching from device index %d to %d", g_current_device_index, next_device_index);
+                    g_current_device_index = next_device_index;
+                    // Force data update to refresh UI with new device data
+                    atomic_store(&g_espnow_data_updated, true);
+                } else {
+                    ESP_LOGW(TAG, "⚠️ No valid devices available for switching: %s", esp_err_to_name(ret));
+                    // Still force refresh in case device becomes available
+                    atomic_store(&g_espnow_data_updated, true);
+                }
                 return true;  // We handled this key
             }
             ESP_LOGD(TAG, "🔹 ENTER key not handled for subpage %d", g_current_subpage);

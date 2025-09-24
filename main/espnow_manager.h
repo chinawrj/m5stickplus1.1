@@ -109,6 +109,15 @@ esp_err_t espnow_manager_get_stats(espnow_stats_t *stats);
 esp_err_t espnow_manager_get_device_info(int device_index, espnow_device_info_t *device_info);
 
 /**
+ * @brief Get the next valid device index in circular fashion
+ * 
+ * @param current_index Current device index
+ * @param next_index Pointer to store the next valid device index
+ * @return ESP_OK on success, ESP_ERR_NOT_FOUND if no valid devices available
+ */
+esp_err_t espnow_manager_get_next_valid_device_index(int current_index, int *next_index);
+
+/**
  * @brief Send a test packet manually
  * 
  * @return ESP_OK on success, error code otherwise
