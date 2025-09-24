@@ -13,6 +13,8 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/timers.h"
+#include "axp192.h"
 #include <string.h>
 
 static const char *TAG = "PAGE_MGR_LVGL";
@@ -22,6 +24,71 @@ static bool g_lvgl_page_manager_initialized = false;
 static bool g_key_events_enabled = true;
 static lv_group_t *g_nav_group = NULL;
 static lv_indev_t *g_input_device = NULL;
+
+// Backlight auto-off timer
+static TimerHandle_t g_backlight_timer = NULL;
+static const uint32_t BACKLIGHT_TIMEOUT_MS = 10000;  // 10 seconds
+static bool g_backlight_auto_off_enabled = true;
+
+/**
+ * @brief Backlight timer callback function
+ * 
+ * This function is called when the backlight timeout expires (no key activity for 10s).
+ * It will turn off the backlight to save power.
+ * 
+ * @param xTimer Timer handle (not used)
+ */
+static void backlight_timer_callback(TimerHandle_t xTimer)
+{
+    (void)xTimer; // Suppress unused parameter warning
+    
+    if (!g_backlight_auto_off_enabled) {
+        ESP_LOGD(TAG, "💡 Backlight auto-off disabled, timer callback ignored");
+        return;
+    }
+    
+    ESP_LOGI(TAG, "💤 Backlight timeout reached - turning off backlight");
+    
+    // Turn off the backlight to save power
+    esp_err_t ret = axp192_power_tft_backlight(false);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "❌ Failed to turn off backlight: %s", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "✅ Backlight turned off successfully");
+    }
+}
+
+/**
+ * @brief Reset the backlight timer
+ * 
+ * This function resets the backlight timer whenever there is user activity.
+ * If the backlight is off, it will also turn it back on.
+ */
+static void reset_backlight_timer(void)
+{
+    if (!g_backlight_timer || !g_backlight_auto_off_enabled) {
+        return;
+    }
+    
+    // Check if backlight is currently off and turn it back on
+    if (!axp192_get_tft_backlight_status()) {
+        ESP_LOGI(TAG, "💡 User activity detected - turning backlight back on");
+        esp_err_t ret = axp192_power_tft_backlight(true);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "❌ Failed to turn on backlight: %s", esp_err_to_name(ret));
+        } else {
+            ESP_LOGI(TAG, "✅ Backlight turned on successfully");
+        }
+    }
+    
+    // Reset timer
+    BaseType_t result = xTimerReset(g_backlight_timer, pdMS_TO_TICKS(100));
+    if (result != pdPASS) {
+        ESP_LOGW(TAG, "⚠️ Failed to reset backlight timer");
+    } else {
+        ESP_LOGD(TAG, "🔄 Backlight timer reset - 10s countdown restarted");
+    }
+}
 
 /**
  * @brief Screen-level key event handler (兜底处理器)
@@ -42,6 +109,9 @@ static void screen_key_event_cb(lv_event_t *e)
         ESP_LOGI(TAG, "🖥️ Screen non-key event: %d (ignored)", code);
         return;
     }
+    
+    // Reset backlight timer on any key event
+    reset_backlight_timer();
     
     if (!g_key_events_enabled) {
         ESP_LOGI(TAG, "🖥️ Screen key events disabled, ignoring");
@@ -148,10 +218,38 @@ esp_err_t page_manager_lvgl_init(lv_display_t *display, lv_indev_t *indev)
     // Initialize state
     g_key_events_enabled = true;
     
+    // Create backlight auto-off timer
+    g_backlight_timer = xTimerCreate(
+        "BacklightTimer",                    // Timer name
+        pdMS_TO_TICKS(BACKLIGHT_TIMEOUT_MS), // Timer period (10 seconds)
+        pdFALSE,                             // Auto-reload: false (one-shot)
+        NULL,                                // Timer ID (not used)
+        backlight_timer_callback             // Callback function
+    );
+    
+    if (g_backlight_timer == NULL) {
+        ESP_LOGW(TAG, "⚠️ Failed to create backlight timer - auto-off feature disabled");
+        g_backlight_auto_off_enabled = false;
+    } else {
+        ESP_LOGI(TAG, "⏰ Backlight timer created - auto-off after %lu seconds", BACKLIGHT_TIMEOUT_MS / 1000);
+        
+        // Start the timer immediately
+        BaseType_t timer_start_result = xTimerStart(g_backlight_timer, pdMS_TO_TICKS(100));
+        if (timer_start_result != pdPASS) {
+            ESP_LOGW(TAG, "⚠️ Failed to start backlight timer");
+            g_backlight_auto_off_enabled = false;
+        } else {
+            ESP_LOGI(TAG, "🚀 Backlight timer started successfully");
+        }
+    }
+    
     g_lvgl_page_manager_initialized = true;
     
     ESP_LOGI(TAG, "LVGL-integrated page manager initialized successfully");
     ESP_LOGI(TAG, "Key navigation: LV_KEY_RIGHT->Next Page, LV_KEY_ENTER->Page Action");
+    ESP_LOGI(TAG, "Backlight auto-off: %s (timeout: %lu seconds)", 
+             g_backlight_auto_off_enabled ? "enabled" : "disabled",
+             BACKLIGHT_TIMEOUT_MS / 1000);
     
     return ESP_OK;
 }
@@ -207,6 +305,16 @@ esp_err_t page_manager_lvgl_deinit(void)
     }
     
     g_key_events_enabled = false;
+    g_backlight_auto_off_enabled = false;
+    
+    // Clean up backlight timer
+    if (g_backlight_timer) {
+        ESP_LOGI(TAG, "🗑️ Cleaning up backlight timer...");
+        xTimerStop(g_backlight_timer, pdMS_TO_TICKS(100));
+        xTimerDelete(g_backlight_timer, pdMS_TO_TICKS(100));
+        g_backlight_timer = NULL;
+        ESP_LOGI(TAG, "✅ Backlight timer cleaned up");
+    }
     
     // Clean up LVGL group
     if (g_nav_group) {
