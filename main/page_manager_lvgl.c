@@ -66,12 +66,16 @@ static void backlight_timer_callback(TimerHandle_t xTimer)
  * This function resets the backlight timer whenever there is user activity.
  * If the backlight is off, it will also turn it back on.
  * Optimized to avoid unnecessary I2C calls by tracking backlight state.
+ * 
+ * @return true if backlight was OFF (just woken up), false if already ON
  */
-static void reset_backlight_timer(void)
+static bool reset_backlight_timer(void)
 {
     if (!g_backlight_timer || !g_backlight_auto_off_enabled) {
-        return;
+        return false;  // Timer disabled, assume backlight is already on
     }
+    
+    bool backlight_was_off = !g_backlight_is_on;
     
     // Only turn on backlight if we know it's off (avoid I2C call every time)
     if (!g_backlight_is_on) {
@@ -92,6 +96,8 @@ static void reset_backlight_timer(void)
     } else {
         ESP_LOGD(TAG, "🔄 Backlight timer reset - 10s countdown restarted");
     }
+    
+    return backlight_was_off;
 }
 
 /**
@@ -114,8 +120,13 @@ static void screen_key_event_cb(lv_event_t *e)
         return;
     }
     
-    // Reset backlight timer on any key event
-    reset_backlight_timer();
+    // Reset backlight timer on any key event and check if backlight was just woken up
+    bool backlight_was_off = reset_backlight_timer();
+    
+    if (backlight_was_off) {
+        ESP_LOGI(TAG, "💡 Backlight was OFF - key press only triggered wake-up, not processing key function");
+        return;  // First key press after backlight off only wakes up backlight, doesn't process key function
+    }
     
     if (!g_key_events_enabled) {
         ESP_LOGI(TAG, "🖥️ Screen key events disabled, ignoring");
