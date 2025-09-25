@@ -45,11 +45,12 @@ typedef struct {
     // Row 1: Device ID and Network Information (2 items)
     lv_obj_t *network_row_label; // "ID: M5NanoC6-123 | RSSI: -XX"
     
-    // Row 2: Electrical Measurements - Voltage & Current (2 items)
-    lv_obj_t *electrical_row_label; // "220.5V | 2.35A"
+    // Row 2: Power Information - Main Display (48pt, like battery voltage)
+    lv_obj_t *power_label;        // "520.0" (48pt, main display)
     
-    // Row 3: Power Information (1 item)
-    lv_obj_t *power_label;        // "520.0W"
+    // Row 3: Electrical Measurements - Dual Panel Layout
+    lv_obj_t *electrical_row_label; // Stores voltage panel reference for updates
+    lv_obj_t *current_panel;        // Current panel reference for updates
     
     // Row 4: System Information with Firmware (3 items)  
     lv_obj_t *system_row_label;   // "UP: 12:34:56 | 45KB | FW: v1.2.3"
@@ -693,33 +694,86 @@ static esp_err_t espnow_node_detail_create(void)
     lv_obj_set_style_text_font(g_node_detail_ui.network_row_label, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(g_node_detail_ui.network_row_label, 5, 25);
     
-    // Row 2: Electrical Measurements - Voltage & Current
-    g_node_detail_ui.electrical_row_label = lv_label_create(scr);
-    lv_label_set_text(g_node_detail_ui.electrical_row_label, "---.-V | --.-A");
-    lv_obj_set_style_text_color(g_node_detail_ui.electrical_row_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_node_detail_ui.electrical_row_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_pos(g_node_detail_ui.electrical_row_label, 5, 45);
-    
-    // Row 3: Power Information
+    // Row 2: Power Information - Main Display (like Battery Voltage, 48pt)
     g_node_detail_ui.power_label = lv_label_create(scr);
-    lv_label_set_text(g_node_detail_ui.power_label, "-----.-W");
+    lv_label_set_text(g_node_detail_ui.power_label, "-----.-");
     lv_obj_set_style_text_color(g_node_detail_ui.power_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_node_detail_ui.power_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_pos(g_node_detail_ui.power_label, 5, 65);
+    lv_obj_set_style_text_font(g_node_detail_ui.power_label, &lv_font_montserrat_24, LV_PART_MAIN);
+    lv_obj_set_pos(g_node_detail_ui.power_label, 10, 25);
     
-    // Row 4: System Information
+    // Power Unit Label "W" (18pt, like voltage unit)
+    lv_obj_t *power_unit_label = lv_label_create(scr);
+    lv_label_set_text(power_unit_label, "W");
+    lv_obj_set_style_text_color(power_unit_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(power_unit_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_pos(power_unit_label, 115, 67);  // Bottom-aligned with 24pt power value
+    
+    // Row 3: Dual Panel Row for Voltage & Current (Y:95-125, like Dual Panel Row)
+    // Left Panel: Voltage
+    lv_obj_t *voltage_panel = lv_obj_create(scr);
+    lv_obj_set_size(voltage_panel, 63, 30);
+    lv_obj_set_pos(voltage_panel, 2, 95);
+    lv_obj_set_style_bg_color(voltage_panel, lv_color_hex(0x204080), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(voltage_panel, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(voltage_panel, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(voltage_panel, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(voltage_panel, LV_OBJ_FLAG_SCROLLABLE);
+    
+    lv_obj_t *voltage_title = lv_label_create(voltage_panel);
+    lv_label_set_text(voltage_title, "VOLT");
+    lv_obj_set_style_text_color(voltage_title, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(voltage_title, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_center(voltage_title);
+    lv_obj_set_pos(voltage_title, 0, -8);
+    
+    lv_obj_t *voltage_value = lv_label_create(voltage_panel);
+    lv_label_set_text(voltage_value, "---.-");
+    lv_obj_set_style_text_color(voltage_value, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(voltage_value, &lv_font_montserrat_18, LV_PART_MAIN);
+    lv_obj_center(voltage_value);
+    lv_obj_set_pos(voltage_value, 0, 7);
+    
+    // Right Panel: Current
+    lv_obj_t *current_panel = lv_obj_create(scr);
+    lv_obj_set_size(current_panel, 63, 30);
+    lv_obj_set_pos(current_panel, 70, 95);
+    lv_obj_set_style_bg_color(current_panel, lv_color_hex(0x204080), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(current_panel, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(current_panel, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(current_panel, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(current_panel, LV_OBJ_FLAG_SCROLLABLE);
+    
+    lv_obj_t *current_title = lv_label_create(current_panel);
+    lv_label_set_text(current_title, "CURR");
+    lv_obj_set_style_text_color(current_title, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(current_title, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_center(current_title);
+    lv_obj_set_pos(current_title, 0, -8);
+    
+    lv_obj_t *current_value = lv_label_create(current_panel);
+    lv_label_set_text(current_value, "--.-");
+    lv_obj_set_style_text_color(current_value, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(current_value, &lv_font_montserrat_18, LV_PART_MAIN);
+    lv_obj_center(current_value);
+    lv_obj_set_pos(current_value, 0, 7);
+    
+    // Store references for later updates
+    g_node_detail_ui.electrical_row_label = voltage_panel;  // Store voltage panel for updates
+    g_node_detail_ui.current_panel = current_panel;         // Store current panel for updates
+    
+    // Row 4: System Information (moved down after dual panel)
     g_node_detail_ui.system_row_label = lv_label_create(scr);
     lv_label_set_text(g_node_detail_ui.system_row_label, "UP: --:--:-- | --KB | FW: ---");
     lv_obj_set_style_text_color(g_node_detail_ui.system_row_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_node_detail_ui.system_row_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_pos(g_node_detail_ui.system_row_label, 5, 85);
+    lv_obj_set_style_text_font(g_node_detail_ui.system_row_label, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_pos(g_node_detail_ui.system_row_label, 5, 130);
     
-    // Row 5: Compile time information
+    // Row 5: Compile time information (moved down)
     g_node_detail_ui.compile_label = lv_label_create(scr);
     lv_label_set_text(g_node_detail_ui.compile_label, "Built: ---");
-    lv_obj_set_style_text_color(g_node_detail_ui.compile_label, lv_color_white(), LV_PART_MAIN); // White color
-    lv_obj_set_style_text_font(g_node_detail_ui.compile_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_pos(g_node_detail_ui.compile_label, 5, 105);
+    lv_obj_set_style_text_color(g_node_detail_ui.compile_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_node_detail_ui.compile_label, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_pos(g_node_detail_ui.compile_label, 5, 150);
     
     // Uptime at bottom-left (LOCAL DEVICE system uptime, same as overview page)
     g_node_detail_ui.uptime_label = lv_label_create(scr);
@@ -727,9 +781,9 @@ static esp_err_t espnow_node_detail_create(void)
     format_uptime_string(uptime_text, sizeof(uptime_text));
     lv_label_set_text(g_node_detail_ui.uptime_label, uptime_text);
     lv_obj_set_style_text_color(g_node_detail_ui.uptime_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_node_detail_ui.uptime_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_node_detail_ui.uptime_label, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_set_style_text_opa(g_node_detail_ui.uptime_label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_pos(g_node_detail_ui.uptime_label, 5, 120);
+    lv_obj_set_pos(g_node_detail_ui.uptime_label, 5, 225);
     
     // Memory at bottom-right (LOCAL DEVICE memory, same as overview page)
     // NOTE: This shows local M5StickC Plus memory, NOT remote device memory
@@ -739,9 +793,9 @@ static esp_err_t espnow_node_detail_create(void)
     format_free_memory_string(memory_text, sizeof(memory_text));
     lv_label_set_text(g_node_detail_ui.memory_label, memory_text);
     lv_obj_set_style_text_color(g_node_detail_ui.memory_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_node_detail_ui.memory_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_node_detail_ui.memory_label, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_set_style_text_opa(g_node_detail_ui.memory_label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_pos(g_node_detail_ui.memory_label, 170, 120);  // Right-aligned
+    lv_obj_set_pos(g_node_detail_ui.memory_label, 80, 225);  // Right-aligned
     
     // Populate data using common refresh function (replaces placeholder text if data is available)
     esp_err_t ret = espnow_node_detail_refresh_data_and_ui();
@@ -841,29 +895,45 @@ static esp_err_t espnow_node_detail_refresh_data_and_ui(void)
         lv_label_set_text(g_node_detail_ui.network_row_label, network_text);
     }
     
-    // Update Row 2: Electrical measurements - Voltage & Current
-    if (g_node_detail_ui.electrical_row_label != NULL) {
-        char electrical_text[80];
-        if (have_real_data) {
-            snprintf(electrical_text, sizeof(electrical_text), 
-                     "%.1fV | %.2fA",
-                     g_current_node_data.ac_voltage,
-                     g_current_node_data.ac_current);
-        } else {
-            snprintf(electrical_text, sizeof(electrical_text), "---.-V | --.-A");
-        }
-        lv_label_set_text(g_node_detail_ui.electrical_row_label, electrical_text);
-    }
-    
-    // Update Row 3: Power information
+    // Update Row 2: Power information - Main Display (48pt)
     if (g_node_detail_ui.power_label != NULL) {
         char power_text[20];
         if (have_real_data) {
-            snprintf(power_text, sizeof(power_text), "%.1fW", g_current_node_data.ac_power);
+            snprintf(power_text, sizeof(power_text), "%06.1f", g_current_node_data.ac_power);
         } else {
-            snprintf(power_text, sizeof(power_text), "-----.-W");
+            snprintf(power_text, sizeof(power_text), "-----.-");
         }
         lv_label_set_text(g_node_detail_ui.power_label, power_text);
+    }
+    
+    // Update Row 3: Dual Panel - Voltage (Left Panel)
+    if (g_node_detail_ui.electrical_row_label != NULL) {
+        // Find the voltage value label (second child of voltage panel)
+        lv_obj_t *voltage_value = lv_obj_get_child(g_node_detail_ui.electrical_row_label, 1);
+        if (voltage_value != NULL) {
+            char voltage_text[16];
+            if (have_real_data) {
+                snprintf(voltage_text, sizeof(voltage_text), "%.1f", g_current_node_data.ac_voltage);
+            } else {
+                snprintf(voltage_text, sizeof(voltage_text), "---.-");
+            }
+            lv_label_set_text(voltage_value, voltage_text);
+        }
+    }
+    
+    // Update Row 3: Dual Panel - Current (Right Panel)
+    if (g_node_detail_ui.current_panel != NULL) {
+        // Find the current value label (second child of current panel)
+        lv_obj_t *current_value = lv_obj_get_child(g_node_detail_ui.current_panel, 1);
+        if (current_value != NULL) {
+            char current_text[16];
+            if (have_real_data) {
+                snprintf(current_text, sizeof(current_text), "%.2f", g_current_node_data.ac_current);
+            } else {
+                snprintf(current_text, sizeof(current_text), "--.-");
+            }
+            lv_label_set_text(current_value, current_text);
+        }
     }
     
     // Update Row 4: System information (Uptime, Memory, Firmware)
