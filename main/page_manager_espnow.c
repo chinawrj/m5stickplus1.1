@@ -1,5 +1,6 @@
 #include "page_manager_espnow.h"
 #include "core/lv_group.h"
+#include "core/lv_obj_pos.h"
 #include "misc/lv_color.h"
 #include "page_manager.h"
 #include "espnow_manager.h"
@@ -25,11 +26,16 @@ typedef struct {
     lv_obj_t *uptime_label;     // System uptime display
     lv_obj_t *memory_label;     // Free memory display
     lv_obj_t *status_label;     // ESP-NOW status display (currently unused)
-    lv_obj_t *sent_label;       // Sent packets counter
-    lv_obj_t *recv_label;       // Received packets counter
+    lv_obj_t *sent_label;       // Sent packets counter (36pt)
+    lv_obj_t *sent_tx_label;    // "Tx" label (12pt) for sent packets
+    lv_obj_t *recv_label;       // Received packets counter (36pt)
+    lv_obj_t *recv_rx_label;    // "Rx" label (12pt) for received packets
     lv_obj_t *title_label;      // Page title
     lv_obj_t *mac_label;        // MAC address display
-    lv_obj_t *nodes_label;      // Online Node: n1/n2/n3 display
+    // Online nodes triple panel layout
+    lv_obj_t *online_panel;     // Left panel: Online nodes count
+    lv_obj_t *used_panel;       // Center panel: Used nodes count  
+    lv_obj_t *total_panel;      // Right panel: Total nodes count
 } espnow_overview_t;
 
 // ESP-NOW node detail page UI objects structure (TLV data display)
@@ -151,7 +157,7 @@ static esp_err_t get_wifi_mac_string(char *mac_str, size_t mac_str_size)
     }
     
     // Format as MAC: XX:XX:XX:XX:XX:XX
-    snprintf(mac_str, mac_str_size, "MAC: %02X:%02X:%02X:%02X:%02X:%02X", 
+    snprintf(mac_str, mac_str_size, "%02X:%02X:%02X:%02X:%02X:%02X", 
              mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
     
     return ESP_OK;
@@ -394,13 +400,13 @@ static esp_err_t espnow_overview_create(void)
     lv_obj_set_style_bg_color(scr, lv_color_black(), LV_PART_MAIN);
     lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     
-    // Title with page indicator
+    // Title with page indicator - centered for 135px screen
     lv_obj_t *title = lv_label_create(scr);
     lv_label_set_text(title, "ESP-NOW [2/2]");
     // Match Monitor page title color (cyan)
     lv_obj_set_style_text_color(title, lv_color_hex(0x00FFFF), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_pos(title, 60, 5);
+    lv_obj_set_pos(title, 25, 5);  // Centered position for 135px screen
     // Store in overview structure for debugging
     g_overview_ui.title_label = title;
 
@@ -410,61 +416,161 @@ static esp_err_t espnow_overview_create(void)
     // Get real MAC address
     char mac_str[32];
     get_wifi_mac_string(mac_str, sizeof(mac_str));
+    // Create MAC address background panel (full-width row)
+    lv_obj_t *mac_panel = lv_obj_create(scr);
+    lv_obj_set_size(mac_panel, 130, 20);  // Full width panel, 20px height
+    lv_obj_set_pos(mac_panel, 2, 28);
+    lv_obj_set_style_bg_color(mac_panel, lv_color_hex(0x000000), LV_PART_MAIN);  // Dark gray background
+    lv_obj_set_style_bg_opa(mac_panel, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(mac_panel, 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(mac_panel, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(mac_panel, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Create MAC label as child of the panel for proper background
     lv_label_set_text(mac_label, mac_str);
-    
+    lv_obj_set_parent(mac_label, mac_panel);  // Make it child of the panel
     lv_obj_set_style_text_color(mac_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(mac_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_pos(mac_label, 10, 30);
+    lv_obj_set_style_text_font(mac_label, &lv_font_montserrat_12, LV_PART_MAIN);  // Smaller font to fit
+    lv_obj_center(mac_label);  // Center within the panel
     // Store in overview structure for debugging
     g_overview_ui.mac_label = mac_label;
     
-    // Send counter (moved up)
+    // Send counter with 36pt font
     g_overview_ui.sent_label = lv_label_create(scr);
-    char sent_text[32];
-    snprintf(sent_text, sizeof(sent_text), "Sent: %"PRIu32" packets", g_espnow_stats.packets_sent);
+    char sent_text[16];
+    snprintf(sent_text, sizeof(sent_text), "%"PRIu32, g_espnow_stats.packets_sent);
     lv_label_set_text(g_overview_ui.sent_label, sent_text);
     lv_obj_set_style_text_color(g_overview_ui.sent_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_overview_ui.sent_label, &lv_font_montserrat_18, LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_overview_ui.sent_label, &lv_font_montserrat_36, LV_PART_MAIN);
     lv_obj_set_pos(g_overview_ui.sent_label, 10, 52);
     
-    // Receive counter (moved up)
+    // "Tx" label for sent packets (12pt, right-aligned in row)
+    g_overview_ui.sent_tx_label = lv_label_create(scr);
+    lv_label_set_text(g_overview_ui.sent_tx_label, "Tx");
+    lv_obj_set_style_text_color(g_overview_ui.sent_tx_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_overview_ui.sent_tx_label, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_pos(g_overview_ui.sent_tx_label, 115, 75);  // Row end position
+    
+    // Receive counter with 36pt font 
     g_overview_ui.recv_label = lv_label_create(scr);
-    char recv_text[32];
-    snprintf(recv_text, sizeof(recv_text), "Received: %"PRIu32" packets", g_espnow_stats.packets_received);
+    char recv_text[16];
+    snprintf(recv_text, sizeof(recv_text), "%"PRIu32, g_espnow_stats.packets_received);
     lv_label_set_text(g_overview_ui.recv_label, recv_text);
     lv_obj_set_style_text_color(g_overview_ui.recv_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_overview_ui.recv_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_pos(g_overview_ui.recv_label, 10, 74);
+    lv_obj_set_style_text_font(g_overview_ui.recv_label, &lv_font_montserrat_36, LV_PART_MAIN);
+    lv_obj_set_pos(g_overview_ui.recv_label, 10, 98);
     
-    // Online Node statistics
-    g_overview_ui.nodes_label = lv_label_create(scr);
-    char nodes_text[32];
-    snprintf(nodes_text, sizeof(nodes_text), "Online Node: %d/%d/%d", 
-             g_espnow_stats.online_nodes, g_espnow_stats.used_nodes, g_espnow_stats.total_nodes);
-    lv_label_set_text(g_overview_ui.nodes_label, nodes_text);
-    lv_obj_set_style_text_color(g_overview_ui.nodes_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_overview_ui.nodes_label, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_set_pos(g_overview_ui.nodes_label, 10, 96);
+    // "Rx" label for received packets (12pt, right-aligned in row)
+    g_overview_ui.recv_rx_label = lv_label_create(scr);
+    lv_label_set_text(g_overview_ui.recv_rx_label, "Rx");
+    lv_obj_set_style_text_color(g_overview_ui.recv_rx_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_overview_ui.recv_rx_label, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_pos(g_overview_ui.recv_rx_label, 115, 121);  // Row end position
     
-    // Uptime at bottom-left
+    // Triple panel layout for Online Nodes (Y:144-174, like monitor page dual panels)
+    // Left Panel: Online nodes count
+    g_overview_ui.online_panel = lv_obj_create(scr);
+    lv_obj_set_size(g_overview_ui.online_panel, 42, 30);
+    lv_obj_set_pos(g_overview_ui.online_panel, 2, 144);
+    lv_obj_set_style_bg_color(g_overview_ui.online_panel, lv_color_hex(0x204080), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(g_overview_ui.online_panel, LV_OPA_COVER, LV_PART_MAIN);  // Ensure opaque background
+    lv_obj_set_style_border_width(g_overview_ui.online_panel, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(g_overview_ui.online_panel, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(g_overview_ui.online_panel, LV_OBJ_FLAG_SCROLLABLE);  // Remove scrollable flag
+    
+    lv_obj_t *online_title = lv_label_create(g_overview_ui.online_panel);
+    lv_label_set_text(online_title, "ON");
+    lv_obj_set_style_text_color(online_title, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(online_title, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(online_title, LV_OPA_COVER, LV_PART_MAIN);  // Ensure opaque text
+    lv_obj_center(online_title);
+    lv_obj_set_pos(online_title, 0, -8);
+    
+    lv_obj_t *online_value = lv_label_create(g_overview_ui.online_panel);
+    char online_text[8];
+    snprintf(online_text, sizeof(online_text), "%d", g_espnow_stats.online_nodes);
+    lv_label_set_text(online_value, online_text);
+    lv_obj_set_style_text_color(online_value, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(online_value, &lv_font_montserrat_24, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(online_value, LV_OPA_COVER, LV_PART_MAIN);  // Ensure opaque text
+    lv_obj_center(online_value);
+    lv_obj_set_pos(online_value, 0, 7);
+    
+    // Center Panel: Used nodes count
+    g_overview_ui.used_panel = lv_obj_create(scr);
+    lv_obj_set_size(g_overview_ui.used_panel, 42, 30);
+    lv_obj_set_pos(g_overview_ui.used_panel, 46, 144);
+    lv_obj_set_style_bg_color(g_overview_ui.used_panel, lv_color_hex(0x204080), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(g_overview_ui.used_panel, LV_OPA_COVER, LV_PART_MAIN);  // Ensure opaque background
+    lv_obj_set_style_border_width(g_overview_ui.used_panel, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(g_overview_ui.used_panel, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(g_overview_ui.used_panel, LV_OBJ_FLAG_SCROLLABLE);  // Remove scrollable flag
+    
+    lv_obj_t *used_title = lv_label_create(g_overview_ui.used_panel);
+    lv_label_set_text(used_title, "USE");
+    lv_obj_set_style_text_color(used_title, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(used_title, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(used_title, LV_OPA_COVER, LV_PART_MAIN);  // Ensure opaque text
+    lv_obj_center(used_title);
+    lv_obj_set_pos(used_title, 0, -8);
+    
+    lv_obj_t *used_value = lv_label_create(g_overview_ui.used_panel);
+    char used_text[8];
+    snprintf(used_text, sizeof(used_text), "%d", g_espnow_stats.used_nodes);
+    lv_label_set_text(used_value, used_text);
+    lv_obj_set_style_text_color(used_value, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(used_value, &lv_font_montserrat_24, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(used_value, LV_OPA_COVER, LV_PART_MAIN);  // Ensure opaque text
+    lv_obj_center(used_value);
+    lv_obj_set_pos(used_value, 0, 7);
+    
+    // Right Panel: Total nodes count
+    g_overview_ui.total_panel = lv_obj_create(scr);
+    lv_obj_set_size(g_overview_ui.total_panel, 42, 30);
+    lv_obj_set_pos(g_overview_ui.total_panel, 90, 144);
+    lv_obj_set_style_bg_color(g_overview_ui.total_panel, lv_color_hex(0x204080), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(g_overview_ui.total_panel, LV_OPA_COVER, LV_PART_MAIN);  // Ensure opaque background
+    lv_obj_set_style_border_width(g_overview_ui.total_panel, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(g_overview_ui.total_panel, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(g_overview_ui.total_panel, LV_OBJ_FLAG_SCROLLABLE);  // Remove scrollable flag
+    
+    lv_obj_t *total_title = lv_label_create(g_overview_ui.total_panel);
+    lv_label_set_text(total_title, "TOT");
+    lv_obj_set_style_text_color(total_title, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(total_title, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(total_title, LV_OPA_COVER, LV_PART_MAIN);  // Ensure opaque text
+    lv_obj_center(total_title);
+    lv_obj_set_pos(total_title, 0, -8);
+    
+    lv_obj_t *total_value = lv_label_create(g_overview_ui.total_panel);
+    char total_text[8];
+    snprintf(total_text, sizeof(total_text), "%d", g_espnow_stats.total_nodes);
+    lv_label_set_text(total_value, total_text);
+    lv_obj_set_style_text_color(total_value, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(total_value, &lv_font_montserrat_24, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(total_value, LV_OPA_COVER, LV_PART_MAIN);  // Ensure opaque text
+    lv_obj_center(total_value);
+    lv_obj_set_pos(total_value, 0, 7);
+    
+    // Uptime at bottom-left (portrait layout: Y:225)
     g_overview_ui.uptime_label = lv_label_create(scr);
     char uptime_text[16];
     format_uptime_string(uptime_text, sizeof(uptime_text));
     lv_label_set_text(g_overview_ui.uptime_label, uptime_text);
     lv_obj_set_style_text_color(g_overview_ui.uptime_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_overview_ui.uptime_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_overview_ui.uptime_label, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_set_style_text_opa(g_overview_ui.uptime_label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_pos(g_overview_ui.uptime_label, 5, 120);
+    lv_obj_set_pos(g_overview_ui.uptime_label, 5, 225);
     
-    // Memory at bottom-right
+    // Memory at bottom-right (portrait layout: Y:225)
     g_overview_ui.memory_label = lv_label_create(scr);
     char memory_text[16];
     format_free_memory_string(memory_text, sizeof(memory_text));
     lv_label_set_text(g_overview_ui.memory_label, memory_text);
     lv_obj_set_style_text_color(g_overview_ui.memory_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_overview_ui.memory_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_overview_ui.memory_label, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_set_style_text_opa(g_overview_ui.memory_label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_pos(g_overview_ui.memory_label, 170, 120);  // Right-aligned
+    lv_obj_set_pos(g_overview_ui.memory_label, 80, 225);  // Right-aligned for 135px width
     
     return ESP_OK;
 }
@@ -493,25 +599,48 @@ static esp_err_t espnow_overview_update(void)
         lv_label_set_text(g_overview_ui.memory_label, memory_text);
     }
     
-    // Update packet statistics
+    // Update packet statistics (48pt numbers only)
     if (g_overview_ui.sent_label != NULL) {
-        char sent_text[32];
-        snprintf(sent_text, sizeof(sent_text), "Sent: %"PRIu32" packets", g_espnow_stats.packets_sent);
+        char sent_text[16];
+        snprintf(sent_text, sizeof(sent_text), "%"PRIu32, g_espnow_stats.packets_sent);
         lv_label_set_text(g_overview_ui.sent_label, sent_text);
     }
     
     if (g_overview_ui.recv_label != NULL) {
-        char recv_text[32];
-        snprintf(recv_text, sizeof(recv_text), "Received: %"PRIu32" packets", g_espnow_stats.packets_received);
+        char recv_text[16];
+        snprintf(recv_text, sizeof(recv_text), "%"PRIu32, g_espnow_stats.packets_received);
         lv_label_set_text(g_overview_ui.recv_label, recv_text);
     }
     
-    // Update Online Node statistics
-    if (g_overview_ui.nodes_label != NULL) {
-        char nodes_text[32];
-        snprintf(nodes_text, sizeof(nodes_text), "Online Node: %d/%d/%d", 
-                 g_espnow_stats.online_nodes, g_espnow_stats.used_nodes, g_espnow_stats.total_nodes);
-        lv_label_set_text(g_overview_ui.nodes_label, nodes_text);
+    // Update Online Node statistics in triple panels (24pt numbers)
+    if (g_overview_ui.online_panel != NULL) {
+        // Find the value label child of online panel and update it
+        lv_obj_t *online_value = lv_obj_get_child(g_overview_ui.online_panel, 1); // Second child (value label)
+        if (online_value != NULL) {
+            char online_text[8];
+            snprintf(online_text, sizeof(online_text), "%d", g_espnow_stats.online_nodes);
+            lv_label_set_text(online_value, online_text);
+        }
+    }
+    
+    if (g_overview_ui.used_panel != NULL) {
+        // Find the value label child of used panel and update it
+        lv_obj_t *used_value = lv_obj_get_child(g_overview_ui.used_panel, 1); // Second child (value label)
+        if (used_value != NULL) {
+            char used_text[8];
+            snprintf(used_text, sizeof(used_text), "%d", g_espnow_stats.used_nodes);
+            lv_label_set_text(used_value, used_text);
+        }
+    }
+    
+    if (g_overview_ui.total_panel != NULL) {
+        // Find the value label child of total panel and update it
+        lv_obj_t *total_value = lv_obj_get_child(g_overview_ui.total_panel, 1); // Second child (value label)
+        if (total_value != NULL) {
+            char total_text[8];
+            snprintf(total_text, sizeof(total_text), "%d", g_espnow_stats.total_nodes);
+            lv_label_set_text(total_value, total_text);
+        }
     }
     
     return ESP_OK;
@@ -548,12 +677,12 @@ static esp_err_t espnow_node_detail_create(void)
     lv_obj_set_style_bg_color(scr, lv_color_black(), LV_PART_MAIN);
     lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     
-    // Title with page indicator
+    // Title with page indicator - centered for 135px screen
     g_node_detail_ui.title_label = lv_label_create(scr);
     lv_label_set_text(g_node_detail_ui.title_label, "Node Detail [2/2]");
     lv_obj_set_style_text_color(g_node_detail_ui.title_label, lv_color_hex(0x00FFFF), LV_PART_MAIN);
     lv_obj_set_style_text_font(g_node_detail_ui.title_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_pos(g_node_detail_ui.title_label, 50, 5);
+    lv_obj_set_pos(g_node_detail_ui.title_label, 15, 5);  // Centered position for 135px screen
     
     // Create UI elements with initial placeholder text - data will be populated by refresh function
     

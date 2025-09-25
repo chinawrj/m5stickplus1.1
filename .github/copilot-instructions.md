@@ -7,7 +7,79 @@ You are an AI coding assistant specializing in ESP-IDF embedded development for 
 **Hardware Platform**: M5StickC Plus 1.1 with ESP32-PICO-D4  
 **Framework**: ESP-IDF 5.5.1  
 **GUI Library**: LVGL 9.3.0  
-**Primary Components**: AXP192 power management, ST7789v2 TFT display (1.14", 135x240), MPU6886 IMU, buttons, LEDs, audio  
+**Primary Components**: AXP192 power management, ST7789v2 TFT display (1.14", 135x240), MPU6886 IMU, buttons, LEDs, audio
+
+## Design Philosophy & UI Architecture
+
+### UI Design Characteristics
+- **Portrait-First Interface**: 135x240 pixels optimized for portrait orientation
+- **Multi-Page Navigation**: Hierarchical page manager system with smooth transitions
+- **Power-Aware UX**: Intelligent backlight management with 10-second auto-off
+- **Safety-First Approach**: All hardware operations use safe abstraction APIs
+- **Real-Time Feedback**: Live system monitoring with sub-second data updates
+
+### Key Design Patterns
+- **Page Manager Architecture**: Modular page system supporting ESP-NOW, monitor, and LVGL demo pages
+- **Event-Driven Navigation**: Button interrupts converted to LVGL key events (RIGHT=next page, ENTER=action)
+- **Thread-Safe Operations**: Dedicated LVGL task with proper synchronization
+- **UX Service Integration**: Coordinated LED/buzzer effects with visual feedback
+- **State Management**: Global hardware state tracking with validation
+
+### Visual Design Standards
+- **Typography Hierarchy**: 48pt main values, 18pt units, 12pt labels, system fonts
+- **Color Scheme**: High-contrast design (white text on black background)
+- **Information Density**: Battery-focused layout with voltage prominence
+- **Responsive Layout**: Dynamic content based on power/charging state
+- **Status Indicators**: Color-coded USB status (green=connected, red=disconnected)  
+
+### Monitor Page UI Specification
+
+#### Layout Structure
+```
+Screen: 135x240 pixels (Portrait)
+├── Title Row (Y:5): "BATTERY MONITOR" - 12pt white text
+├── Main Display (Y:25-80): 
+│   ├── Battery Voltage: 48pt white text (X:10, Y:25)
+│   └── Unit Label "V": 18pt white text (X:115, Y:55)
+├── Dual Panel Row (Y:85-135):
+│   ├── Left Panel (2,85,63x50): USB voltage - blue bg (0x204080)
+│   │   ├── Title: "USB V" - 14pt white (center, Y:2)
+│   │   └── Value: "-.--" - 24pt white (center, Y:22)
+│   └── Right Panel (70,85,63x50): Battery current - blue bg (0x204080)
+│       ├── Title: "CHG I"/"DIS I" - 14pt white (center, Y:2)
+│       └── Value: "---" - 24pt white (center, Y:22)
+├── Temperature Bar (Y:145-175): 
+│   └── Full-width panel (135x30): Green bg (0x208020)
+│       └── Temp: "--.-°C" - 24pt white (centered)
+├── Power Status (Y:180-221):
+│   ├── Label: "Power Source:" - 12pt white (X:10, Y:180)
+│   └── Status Panel (5,197,135x24): Dynamic color
+│       └── Text: "USB"/"BATTERY" - 18pt white (centered)
+└── Footer Row (Y:225): 
+    ├── Uptime: "HH:MM:SS" - 12pt white (X:5)
+    └── Memory: "XXX KB" - 12pt white (right-aligned, X:80-130)
+```
+
+#### Color Palette
+- **Background**: Black (`lv_color_black()`)
+- **Primary Text**: White (`lv_color_white()`)
+- **USB/Current Panels**: Dark Blue (`0x204080`)
+- **Temperature Panel**: Dark Green (`0x208020`)
+- **USB Connected**: Green (`0x00AA00`)
+- **Battery Mode**: Orange (`0xFF6600`)
+
+#### Font Hierarchy
+- **48pt**: Main battery voltage display
+- **24pt**: Secondary values (USB, current, temperature)
+- **18pt**: Unit labels and status text
+- **14pt**: Panel titles
+- **12pt**: Labels and footer info
+
+#### Dynamic Behavior
+- **Real-time Updates**: All values refresh with system monitor data
+- **State-Responsive**: Current panel title changes ("CHG I"/"DIS I")
+- **Color Coding**: Power status panel color reflects connection state
+- **Data Validation**: Graceful handling of invalid sensor data
 
 ## Development Environment Setup
 
