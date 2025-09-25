@@ -559,7 +559,7 @@ static esp_err_t espnow_node_detail_create(void)
     
     // Row 1: Device ID and Network Information 
     g_node_detail_ui.network_row_label = lv_label_create(scr);
-    lv_label_set_text(g_node_detail_ui.network_row_label, "ID: --- | RSSI: ---");
+    lv_label_set_text(g_node_detail_ui.network_row_label, "0:--- | RSSI: ---");
     lv_obj_set_style_text_color(g_node_detail_ui.network_row_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(g_node_detail_ui.network_row_label, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(g_node_detail_ui.network_row_label, 5, 25);
@@ -702,11 +702,12 @@ static esp_err_t espnow_node_detail_refresh_data_and_ui(void)
         char network_text[80];
         if (have_real_data) {
             snprintf(network_text, sizeof(network_text), 
-                     "ID:%s | RSSI:%d",
+                     "%d:%s | RSSI:%d",
+                     g_current_device_index,
                      g_current_node_data.device_id,
                      g_current_node_data.rssi);
         } else {
-            snprintf(network_text, sizeof(network_text), "ID: --- | RSSI: ---");
+            snprintf(network_text, sizeof(network_text), "%d:--- | RSSI: ---", g_current_device_index);
         }
         lv_label_set_text(g_node_detail_ui.network_row_label, network_text);
     }
