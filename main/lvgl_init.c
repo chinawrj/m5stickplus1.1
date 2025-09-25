@@ -144,22 +144,22 @@ esp_err_t lvgl_init_base(void)
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel_handle, true));
     
-    // Set panel gap and mirror settings for M5StickC Plus - LANDSCAPE MODE
-    ESP_ERROR_CHECK(esp_lcd_panel_set_gap(panel_handle, 40, 52));  // Swap gap values for landscape
-    ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel_handle, false, true));  // Mirror Y axis for landscape
-    ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(panel_handle, true));        // Enable XY swap for landscape
+    // Set panel gap and mirror settings for M5StickC Plus - PORTRAIT MODE
+    ESP_ERROR_CHECK(esp_lcd_panel_set_gap(panel_handle, 52, 40));  // Original gap values for portrait
+    ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel_handle, false, false));  // No mirroring - CORRECT for portrait
+    ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(panel_handle, false));        // No XY swap for portrait
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
 
     ESP_LOGI(TAG, "Turn on LCD backlight");
     axp192_power_tft_backlight(true);
 
     ESP_LOGI(TAG, "Initialize LVGL");
-    // Create a lvgl display for LANDSCAPE mode (240x135)
-    lv_display_t *display = lv_display_create(ST7789_LCD_V_RES, ST7789_LCD_H_RES);  // Swap W/H for landscape
+    // Create a lvgl display for PORTRAIT mode (135x240)
+    lv_display_t *display = lv_display_create(ST7789_LCD_H_RES, ST7789_LCD_V_RES);  // Original W/H for portrait
 
-    // Alloc draw buffers used by LVGL for LANDSCAPE mode
-    // Buffer size based on landscape width (240 pixels)
-    size_t draw_buffer_sz = ST7789_LCD_V_RES * LVGL_DRAW_BUF_LINES * sizeof(lv_color16_t);
+    // Alloc draw buffers used by LVGL for PORTRAIT mode
+    // Buffer size based on portrait width (135 pixels)
+    size_t draw_buffer_sz = ST7789_LCD_H_RES * LVGL_DRAW_BUF_LINES * sizeof(lv_color16_t);
 
     void *buf1 = spi_bus_dma_memory_alloc(LCD_HOST, draw_buffer_sz, 0);
     if (buf1 == NULL) {

@@ -129,7 +129,7 @@ esp_err_t st7789_lcd_init(void)
     }
 
     // Set correct rotation for M5StickC Plus (0 degrees - portrait mode)
-    ret = esp_lcd_panel_mirror(panel_handle, true, false);  // Mirror X axis
+    ret = esp_lcd_panel_mirror(panel_handle, false, false);  // No mirroring - CORRECT for portrait
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set LCD mirror: %s", esp_err_to_name(ret));
         goto cleanup;

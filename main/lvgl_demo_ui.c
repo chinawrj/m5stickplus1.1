@@ -4,7 +4,7 @@
  * It has been replaced by the new page manager system (page_manager_lvgl.c).
  * Kept for reference only.
  * 
- * Shows battery, temperature, and system information - LANDSCAPE MODE (240x135)
+ * Shows battery, temperature, and system information - PORTRAIT MODE (135x240)
  */
 
 #if 0  // DEPRECATED - Old system, use page_manager_lvgl.c instead
@@ -98,7 +98,7 @@ static void update_display_data(lv_timer_t *timer)
 }
 
 /**
- * System monitor display with real-time data - landscape mode
+ * System monitor display with real-time data - portrait mode
  */
 void m5stick_lvgl_demo_ui(lv_display_t *disp)
 {
