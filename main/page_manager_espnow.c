@@ -698,15 +698,15 @@ static esp_err_t espnow_node_detail_create(void)
     g_node_detail_ui.power_label = lv_label_create(scr);
     lv_label_set_text(g_node_detail_ui.power_label, "-----.-");
     lv_obj_set_style_text_color(g_node_detail_ui.power_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_node_detail_ui.power_label, &lv_font_montserrat_24, LV_PART_MAIN);
-    lv_obj_set_pos(g_node_detail_ui.power_label, 10, 25);
+    lv_obj_set_style_text_font(g_node_detail_ui.power_label, &lv_font_montserrat_48, LV_PART_MAIN);
+    lv_obj_set_pos(g_node_detail_ui.power_label, 10, 45);  // Main display position
     
     // Power Unit Label "W" (18pt, like voltage unit)
     lv_obj_t *power_unit_label = lv_label_create(scr);
     lv_label_set_text(power_unit_label, "W");
     lv_obj_set_style_text_color(power_unit_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(power_unit_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_pos(power_unit_label, 115, 67);  // Bottom-aligned with 24pt power value
+    lv_obj_set_style_text_font(power_unit_label, &lv_font_montserrat_18, LV_PART_MAIN);
+    lv_obj_set_pos(power_unit_label, 115, 75);  // Aligned with power value baseline
     
     // Row 3: Dual Panel Row for Voltage & Current (Y:95-125, like Dual Panel Row)
     // Left Panel: Voltage
