@@ -442,7 +442,7 @@ static esp_err_t espnow_overview_create(void)
     snprintf(sent_text, sizeof(sent_text), "%"PRIu32, g_espnow_stats.packets_sent);
     lv_label_set_text(g_overview_ui.sent_label, sent_text);
     lv_obj_set_style_text_color(g_overview_ui.sent_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_overview_ui.sent_label, &lv_font_montserrat_36, LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_overview_ui.sent_label, &lv_font_montserrat_20, LV_PART_MAIN);
     lv_obj_set_pos(g_overview_ui.sent_label, 10, 52);
     
     // "Tx" label for sent packets (12pt, right-aligned in row)
@@ -458,7 +458,7 @@ static esp_err_t espnow_overview_create(void)
     snprintf(recv_text, sizeof(recv_text), "%"PRIu32, g_espnow_stats.packets_received);
     lv_label_set_text(g_overview_ui.recv_label, recv_text);
     lv_obj_set_style_text_color(g_overview_ui.recv_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_overview_ui.recv_label, &lv_font_montserrat_36, LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_overview_ui.recv_label, &lv_font_montserrat_20, LV_PART_MAIN);
     lv_obj_set_pos(g_overview_ui.recv_label, 10, 98);
     
     // "Rx" label for received packets (12pt, right-aligned in row)
@@ -600,16 +600,16 @@ static esp_err_t espnow_overview_update(void)
         lv_label_set_text(g_overview_ui.memory_label, memory_text);
     }
     
-    // Update packet statistics (48pt numbers only)
+    // Update packet statistics (48pt numbers with leading zeros - 7 digits)
     if (g_overview_ui.sent_label != NULL) {
         char sent_text[16];
-        snprintf(sent_text, sizeof(sent_text), "%"PRIu32, g_espnow_stats.packets_sent);
+        snprintf(sent_text, sizeof(sent_text), "%08"PRIu32, g_espnow_stats.packets_sent);
         lv_label_set_text(g_overview_ui.sent_label, sent_text);
     }
     
     if (g_overview_ui.recv_label != NULL) {
         char recv_text[16];
-        snprintf(recv_text, sizeof(recv_text), "%"PRIu32, g_espnow_stats.packets_received);
+        snprintf(recv_text, sizeof(recv_text), "%08"PRIu32, g_espnow_stats.packets_received);
         lv_label_set_text(g_overview_ui.recv_label, recv_text);
     }
     
@@ -694,12 +694,12 @@ static esp_err_t espnow_node_detail_create(void)
     lv_obj_set_style_text_font(g_node_detail_ui.network_row_label, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_pos(g_node_detail_ui.network_row_label, 5, 25);
     
-    // Row 2: Power Information - Main Display (24pt)
+    // Row 2: Power Information - Main Display (28pt)
     g_node_detail_ui.power_label = lv_label_create(scr);
     lv_label_set_text(g_node_detail_ui.power_label, "-----.-");
     lv_obj_set_style_text_color(g_node_detail_ui.power_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_node_detail_ui.power_label, &lv_font_montserrat_24, LV_PART_MAIN);
-    lv_obj_set_pos(g_node_detail_ui.power_label, 10, 60);  // Adjusted for 24pt baseline alignment
+    lv_obj_set_style_text_font(g_node_detail_ui.power_label, &lv_font_montserrat_28, LV_PART_MAIN);
+    lv_obj_set_pos(g_node_detail_ui.power_label, 10, 60);  // Adjusted for 28pt baseline alignment
     
     // Power Unit Label "W" (18pt, like voltage unit)
     lv_obj_t *power_unit_label = lv_label_create(scr);
