@@ -603,13 +603,13 @@ static esp_err_t espnow_overview_update(void)
     // Update packet statistics (48pt numbers with leading zeros - 7 digits)
     if (g_overview_ui.sent_label != NULL) {
         char sent_text[16];
-        snprintf(sent_text, sizeof(sent_text), "%08"PRIu32, g_espnow_stats.packets_sent);
+        snprintf(sent_text, sizeof(sent_text), "%09"PRIu32, g_espnow_stats.packets_sent);
         lv_label_set_text(g_overview_ui.sent_label, sent_text);
     }
     
     if (g_overview_ui.recv_label != NULL) {
         char recv_text[16];
-        snprintf(recv_text, sizeof(recv_text), "%08"PRIu32, g_espnow_stats.packets_received);
+        snprintf(recv_text, sizeof(recv_text), "%09"PRIu32, g_espnow_stats.packets_received);
         lv_label_set_text(g_overview_ui.recv_label, recv_text);
     }
     
