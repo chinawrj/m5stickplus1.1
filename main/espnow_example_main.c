@@ -14,6 +14,7 @@
 */
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
@@ -40,13 +41,13 @@ static void task_monitor_debug(void *pvParameters)
         // Simplified task monitoring without requiring runtime stats
         UBaseType_t task_count = uxTaskGetNumberOfTasks();
         ESP_LOGI(TAG, "=== Task Monitor Report ===");
-        ESP_LOGI(TAG, "Total tasks: %lu", task_count);
-        ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
-        ESP_LOGI(TAG, "Minimum free heap: %lu bytes", esp_get_minimum_free_heap_size());
+        ESP_LOGI(TAG, "Total tasks: %u", task_count);
+        ESP_LOGI(TAG, "Free heap: %" PRIu32 " bytes", esp_get_free_heap_size());
+        ESP_LOGI(TAG, "Minimum free heap: %" PRIu32 " bytes", esp_get_minimum_free_heap_size());
         
         // List currently running tasks on each core
-        TaskHandle_t task_handle_cpu0 = xTaskGetCurrentTaskHandleForCPU(0);
-        TaskHandle_t task_handle_cpu1 = xTaskGetCurrentTaskHandleForCPU(1);
+        TaskHandle_t task_handle_cpu0 = xTaskGetCurrentTaskHandleForCore(0);
+        TaskHandle_t task_handle_cpu1 = xTaskGetCurrentTaskHandleForCore(1);
         
         if (task_handle_cpu0) {
             const char *task_name_cpu0 = pcTaskGetName(task_handle_cpu0);

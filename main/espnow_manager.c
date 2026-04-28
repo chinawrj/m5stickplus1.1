@@ -586,7 +586,7 @@ esp_err_t espnow_manager_get_device_info(int device_index, espnow_device_info_t 
                                                    (entry->value[2] << 8) | 
                                                     entry->value[3];
                         device_info->free_memory_kb = free_memory_bytes / 1024;
-                        ESP_LOGD(TAG, "🧠 Parsed TLV_TYPE_FREE_MEMORY: %u bytes (%u KB)", 
+                        ESP_LOGD(TAG, "🧠 Parsed TLV_TYPE_FREE_MEMORY: %" PRIu32 " bytes (%" PRIu32 " KB)", 
                                 free_memory_bytes, device_info->free_memory_kb);
                     }
                     break;

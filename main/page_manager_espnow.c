@@ -1,4 +1,5 @@
 #include "page_manager_espnow.h"
+#include <string.h>
 #include "core/lv_group.h"
 #include "core/lv_obj_pos.h"
 #include "misc/lv_color.h"

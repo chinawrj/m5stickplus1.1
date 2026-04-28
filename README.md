@@ -139,9 +139,14 @@ idf.py build
 # Find USB port
 ls /dev/cu.usbserial-*
 
-# Flash and monitor
-idf.py -p /dev/cu.usbserial-[YOUR_PORT] flash monitor
+# Flash at 1500000 baud (recommended for M5StickC Plus)
+idf.py -b 1500000 -p /dev/cu.usbserial-[YOUR_PORT] flash
+
+# Monitor at 115200 baud
+idf.py -b 115200 -p /dev/cu.usbserial-[YOUR_PORT] monitor
 ```
+
+> **Note**: M5StickC Plus 1.1 uses ESP32-PICO-D4 with **4MB flash**. This project uses a custom partition table (`partitions.csv`) with a 1.5MB factory app partition to accommodate the full-featured binary.
 
 ### 📚 API Usage Guide
 
@@ -677,9 +682,14 @@ idf.py build
 # 查找USB端口
 ls /dev/cu.usbserial-*
 
-# 烧录并监控
-idf.py -p /dev/cu.usbserial-[YOUR_PORT] flash monitor
+# 以1500000波特率烧录（M5StickC Plus推荐）
+idf.py -b 1500000 -p /dev/cu.usbserial-[YOUR_PORT] flash
+
+# 以115200波特率监控
+idf.py -b 115200 -p /dev/cu.usbserial-[YOUR_PORT] monitor
 ```
+
+> **注意**：M5StickC Plus 1.1使用ESP32-PICO-D4，搭载**4MB Flash**。本项目使用自定义分区表（`partitions.csv`），工厂应用分区为1.5MB，可容纳完整功能的固件二进制文件。
 
 ### 📚 API使用指南
 
